@@ -1,0 +1,28 @@
+# 운영체제가 생성하는 표시 정보
+.DS_Store
+Thumbs.db
+
+# 로컬 인증정보와 비밀 설정 (값 없는 예시 파일은 별도 검토 후 기록 가능)
+.env
+.env.*
+!.env.example
+.secrets/
+*.pem
+*.key
+
+# 개발 중 설치·생성되는 파일
+node_modules/
+dist/
+out/
+coverage/
+*.log
+
+# 실제 펫의 로컬 기억·대화 등 실행 데이터
+.local/
+local-data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
