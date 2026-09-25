@@ -1,4 +1,12 @@
 const egg = document.querySelector<HTMLButtonElement>('#egg')!;
+// Identity comes from the app-owned store, never generated or persisted by the page.
+window.petWindow.snapshot().then(pet => {
+  egg.dataset.petId = pet.petId;
+  egg.dataset.stage = pet.stage;
+}).catch(() => {
+  egg.disabled = true;
+  egg.setAttribute('aria-label', '알 정보를 불러오지 못했습니다. 앱을 다시 실행해 주세요.');
+});
 let activePointer: number | undefined;
 let hovering = false;
 

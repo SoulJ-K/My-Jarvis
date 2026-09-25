@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import type { EggSnapshot } from '../shared/pet';
 
 const WIDTH = 180;
 const HEIGHT = 200;
@@ -11,7 +12,7 @@ export function initialPosition() {
   return { x: area.x + area.width - WIDTH - 48, y: area.y + area.height - HEIGHT - 32 };
 }
 
-export async function createPetWindow(show = true) {
+export async function createPetWindow(pet: EggSnapshot, show = true) {
   const page = path.join(__dirname, '../renderer/index.html');
   const win = new BrowserWindow({
     ...initialPosition(), width: WIDTH, height: HEIGHT,
@@ -82,12 +83,18 @@ export async function createPetWindow(show = true) {
   ipcMain.on('egg:drag-move', move);
   ipcMain.handle('egg:drag-end', end);
   ipcMain.on('egg:drag-cancel', cancel);
+  ipcMain.handle('egg:snapshot', (event, ...args: unknown[]) => {
+    if (!validSender(event) || args.length !== 0) throw new Error('EGG_REQUEST_DENIED');
+    // Read-only, repeatable snapshot. No paths, SQL, writes, or general command interface.
+    return { petId: pet.petId, createdAt: pet.createdAt, stage: pet.stage };
+  });
   win.on('closed', () => {
     ipcMain.removeListener('egg:hover', hover);
     ipcMain.removeListener('egg:drag-start', start);
     ipcMain.removeListener('egg:drag-move', move);
     ipcMain.removeHandler('egg:drag-end');
     ipcMain.removeListener('egg:drag-cancel', cancel);
+    ipcMain.removeHandler('egg:snapshot');
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());

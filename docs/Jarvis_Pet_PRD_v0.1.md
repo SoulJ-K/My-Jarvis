@@ -462,7 +462,7 @@ Jarvis Pet
 
 **SQLite**
 
-정확한 저장 기술은 기술 스택 결정 후 확정한다.
+이후 D-039에서 SQLite를 선택했다. 같은 알 저장·복원의 작업 브랜치 검증은 [기술 설계 단계 3](Jarvis_Pet_Technical_Design_v0.1.md), 방식과 한계는 [ADR-001](ADR-001-local-pet-storage.md)을 따른다.
 
 ---
 
@@ -1048,7 +1048,7 @@ AIProviderConfig
 - Java/Spring 사용 범위
 - 첫 AI Provider 및 일반 대화 연결 방식
 - AI 인증 방식
-- SQLite 최종 채택 여부
+- 선택한 SQLite의 설치용 앱·Windows 검증과 후속 상태·경험 저장 상세
 
 ## AI
 

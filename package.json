@@ -2,13 +2,13 @@
   "name": "my-jarvis",
   "version": "0.1.0",
   "private": true,
-  "description": "Jarvis Pet의 첫 macOS 임시 알 창 검증",
+  "description": "Jarvis Pet의 macOS 임시 알과 로컬 저장·복원 검증",
   "main": "dist/src/main/index.js",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run build && electron dist/tests/egg-smoke.js"
+    "test": "npm run build && node scripts/test.mjs"
   },
   "license": "UNLICENSED",
   "devDependencies": {

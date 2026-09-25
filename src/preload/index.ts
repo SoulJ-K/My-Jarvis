@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// Only window gestures are exposed; no filesystem, shell, or general IPC access.
+// Only a read-only pet snapshot and gestures; no filesystem, SQL, shell, or general IPC.
 contextBridge.exposeInMainWorld('petWindow', {
+  snapshot: () => ipcRenderer.invoke('egg:snapshot'),
   hover: (interactive: boolean) => ipcRenderer.send('egg:hover', interactive),
   beginDrag: () => ipcRenderer.send('egg:drag-start'),
   moveDrag: () => ipcRenderer.send('egg:drag-move'),

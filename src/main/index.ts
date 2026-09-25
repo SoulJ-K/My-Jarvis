@@ -1,38 +1,62 @@
-import { app, Menu, nativeImage, Tray } from 'electron';
+import { app, dialog, Menu, nativeImage, Tray, type BrowserWindow } from 'electron';
 import { createPetWindow, initialPosition } from './windows';
+import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 
-app.setName('Jarvis Pet');
-let tray: Tray | undefined;
-
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
+// Test entry points call this same startup with isolated userData and hidden windows.
+// No test settings or storage paths are exposed to the renderer.
+export function startJarvis(options: {
+  show?: boolean;
+  onReady?: (win: BrowserWindow) => Promise<void>;
+  onFailure?: (code: string) => void;
+} = {}): void {
+  const show = options.show ?? true;
+  app.setName('Jarvis Pet');
+  let tray: Tray | undefined;
+  let win: BrowserWindow | undefined;
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+  const reset = () => {
+    if (!win || win.isDestroyed()) return;
+    const position = initialPosition();
+    win.setPosition(position.x, position.y);
+    if (show) win.showInactive();
+  };
+  app.on('second-instance', reset);
+  app.on('activate', () => { if (show) win?.showInactive(); });
+  app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => tray?.destroy());
   app.whenReady().then(async () => {
     app.dock?.hide();
-    const win = await createPetWindow();
-    const reset = () => {
-      const position = initialPosition();
-      win.setPosition(position.x, position.y);
-      win.showInactive();
-    };
-    // A text tray item avoids adding a temporary image library or final brand icon.
-    tray = new Tray(nativeImage.createEmpty());
-    tray.setTitle('알');
-    tray.setToolTip('Jarvis Pet · 임시 알');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Jarvis Pet · 임시 알', enabled: false },
-      { label: '알을 처음 위치로', click: reset },
-      { type: 'separator' },
-      { label: 'Jarvis Pet 종료', click: () => app.quit() },
-    ]));
-    app.on('second-instance', reset);
-    app.on('activate', () => win.showInactive());
+    // Persistence must succeed before an egg window can exist.
+    const pet = loadOrCreateEgg(app.getPath('userData'));
+    win = await createPetWindow(pet, show);
     win.on('closed', () => app.quit());
-    console.log('Jarvis Pet: 임시 알 실행 중. 메뉴 막대의 “알”에서 종료할 수 있습니다.');
+    if (show) {
+      tray = new Tray(nativeImage.createEmpty());
+      tray.setTitle('알');
+      tray.setToolTip('Jarvis Pet · 알');
+      tray.setContextMenu(Menu.buildFromTemplate([
+        { label: 'Jarvis Pet · 알', enabled: false },
+        { label: '알을 처음 위치로', click: reset },
+        { type: 'separator' },
+        { label: 'Jarvis Pet 종료', click: () => app.quit() },
+      ]));
+      console.log('Jarvis Pet: 저장된 알 실행 중. 메뉴 막대의 “알”에서 종료할 수 있습니다.');
+    }
+    await options.onReady?.(win);
   }).catch(error => {
-    console.error('임시 알 실행 실패:', error);
+    const code = error instanceof PetStorageError ? error.code : 'START_FAILED';
+    console.error(`Jarvis Pet 실행 실패: ${code}`);
+    if (show) dialog.showErrorBox('알을 불러오지 못했습니다',
+      '알 정보를 안전하게 저장하거나 읽을 수 없어 실행을 멈췄습니다.\n' +
+      '기존 저장 파일을 삭제하거나 새 알로 바꾸지 않았습니다.\n' +
+      '앱 데이터 폴더를 보존한 채 권한·저장 공간·복구 가능 여부를 확인해 주세요.\n' +
+      `오류 코드: ${code}`);
+    options.onFailure?.(code);
     app.exit(1);
   });
 }
-app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => tray?.destroy());
+
+if (require.main === module) startJarvis();

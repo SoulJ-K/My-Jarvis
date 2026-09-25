@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { loadOrCreateEgg } from '../src/storage/pet-repository';
 import path from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { createPetWindow } from '../src/main/windows';
 
 // App-owned integration checks. These do not simulate clicks in other macOS apps.
 app.setName('Jarvis Pet Smoke Test');
+const testData = mkdtempSync(path.join(tmpdir(), 'jarvis-egg-smoke-'));
+app.setPath('userData', testData);
+app.on('quit', () => rmSync(testData, { recursive: true, force: true }));
 const timeout = setTimeout(() => {
   console.error('FAIL: 알 창 검사 시간 초과');
   app.exit(1);
@@ -13,7 +18,19 @@ const timeout = setTimeout(() => {
 
 app.whenReady().then(async () => {
   app.dock?.hide();
-  const win = await createPetWindow(false);
+  const pet = loadOrCreateEgg(testData);
+  // Capture the real registered handler and real valid event, without adding a test API to preload.
+  const register = ipcMain.handle.bind(ipcMain);
+  let snapshotHandler: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
+  let snapshotEvent: IpcMainInvokeEvent;
+  ipcMain.handle = (channel, listener) => {
+    if (channel === 'egg:snapshot') {
+      snapshotHandler = listener;
+      register(channel, (event, ...args) => { snapshotEvent = event; return listener(event, ...args); });
+    } else register(channel, listener);
+  };
+  const win = await createPetWindow(pet, false);
+  ipcMain.handle = register;
   const errors: string[] = [];
   win.webContents.on('console-message', (_event, level, message) => {
     if (level === 3) errors.push(message);
@@ -26,7 +43,13 @@ app.whenReady().then(async () => {
   assert.equal(await win.webContents.executeJavaScript('typeof window.ipcRenderer'), 'undefined');
   assert.equal(await win.webContents.executeJavaScript('typeof window.petWindow.endDrag'), 'function');
   assert.equal(await win.webContents.executeJavaScript('document.querySelectorAll("#egg").length'), 1);
-  console.log('PASS: 실제 페이지·제한된 preload 연결·창과 보안 설정');
+  assert.deepEqual(await win.webContents.executeJavaScript('window.petWindow.snapshot()'), pet);
+  assert.deepEqual(await win.webContents.executeJavaScript('window.petWindow.snapshot()'), pet);
+  assert.equal(await win.webContents.executeJavaScript('document.querySelector("#egg").dataset.petId'), pet.petId);
+  assert.deepEqual(await win.webContents.executeJavaScript('Object.keys(window.petWindow).sort()'),
+    ['beginDrag', 'cancelDrag', 'endDrag', 'hover', 'moveDrag', 'snapshot']);
+  assert.throws(() => snapshotHandler(snapshotEvent, { sql: 'DELETE FROM pet' }), /EGG_REQUEST_DENIED/);
+  console.log('PASS: 실제 저장된 알·반복 조회·잘못된 조회 인자 거절·제한된 연결');
 
   const hoverCalls: boolean[] = [];
   const originalIgnore = win.setIgnoreMouseEvents.bind(win);
@@ -64,8 +87,17 @@ app.whenReady().then(async () => {
     await window.petWindow.endDrag();
   })()`);
   assert.deepEqual(hoverCalls, []);
+  await assert.rejects(foreign.webContents.executeJavaScript('window.petWindow.snapshot()'), /EGG_REQUEST_DENIED/);
   foreign.destroy();
-  console.log('PASS: 다른 창에서 보낸 조작 요청 거절');
+  const probePreload = path.join(testData, 'ipc-probe.cjs');
+  writeFileSync(probePreload, "const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('probe',{invoke:(channel)=>ipcRenderer.invoke(channel)});");
+  const probe = new BrowserWindow({ show: false, webPreferences: {
+    preload: probePreload, nodeIntegration: false, contextIsolation: true, sandbox: true,
+  } });
+  await probe.loadURL('data:text/html,<html></html>');
+  await assert.rejects(probe.webContents.executeJavaScript("window.probe.invoke('egg:unregistered')"), /No handler registered/);
+  probe.destroy();
+  console.log('PASS: 다른 창·미등록 명령 거절');
 
   const capture = await win.webContents.capturePage();
   assert.equal(capture.isEmpty(), false);
