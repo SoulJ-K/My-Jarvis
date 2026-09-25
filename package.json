@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run build && electron dist/tests/egg-smoke.js"
+    "test": "npm run build && node --test dist/tests/brain.test.js && electron dist/tests/egg-smoke.js"
   },
   "license": "UNLICENSED",
   "devDependencies": {

@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { EggBrain } from '../pet/brain';
 
 const WIDTH = 180;
 const HEIGHT = 200;
@@ -28,6 +29,15 @@ export async function createPetWindow(show = true) {
       nodeIntegration: false, contextIsolation: true, sandbox: true,
       webSecurity: true, spellcheck: false,
     },
+  });
+
+  const brain = new EggBrain({
+    after(milliseconds, callback) {
+      const timer = setTimeout(callback, milliseconds);
+      return () => clearTimeout(timer);
+    },
+  }, state => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('pet:state', state);
   });
 
   let drag: { cursor: Electron.Point; origin: Electron.Point; moved: boolean } | undefined;
@@ -70,6 +80,7 @@ export async function createPetWindow(show = true) {
     const moved = drag?.moved ?? true;
     drag = undefined;
     setInteractive(false);
+    if (!moved) brain.touch();
     return moved;
   };
   const cancel = (event: IpcMainEvent) => {
@@ -81,12 +92,18 @@ export async function createPetWindow(show = true) {
   ipcMain.on('egg:drag-start', start);
   ipcMain.on('egg:drag-move', move);
   ipcMain.handle('egg:drag-end', end);
+  ipcMain.handle('pet:read-state', event => {
+    if (!validSender(event)) throw new Error('Pet state request denied');
+    return brain.snapshot();
+  });
   ipcMain.on('egg:drag-cancel', cancel);
   win.on('closed', () => {
+    brain.dispose();
     ipcMain.removeListener('egg:hover', hover);
     ipcMain.removeListener('egg:drag-start', start);
     ipcMain.removeListener('egg:drag-move', move);
     ipcMain.removeHandler('egg:drag-end');
+    ipcMain.removeHandler('pet:read-state');
     ipcMain.removeListener('egg:drag-cancel', cancel);
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
