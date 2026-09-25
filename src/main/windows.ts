@@ -16,6 +16,9 @@ export async function createPetWindow(show = true) {
   const win = new BrowserWindow({
     ...initialPosition(), width: WIDTH, height: HEIGHT,
     title: 'Jarvis Pet · 임시 알',
+    // focusable:false alone does not prevent macOS from activating the app on click.
+    // A non-activating panel keeps the current app active while the egg receives mouse events.
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
     transparent: true, backgroundColor: '#00000000', frame: false,
     hasShadow: false, resizable: false, maximizable: false, minimizable: false,
     fullscreenable: false, alwaysOnTop: true, skipTaskbar: true,
