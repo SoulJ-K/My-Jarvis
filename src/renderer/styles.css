@@ -91,7 +91,11 @@ main { position: relative; width: 180px; height: 200px; }
 #emotion-orb[data-play=true] { left: 126px; top: 146px; animation: orb-roll 1.5s ease-in-out infinite alternate; }
 @keyframes baby-joy { 50% { transform: translateY(-5px); } }
 @keyframes orb-roll { to { transform: translateX(-24px) rotate(-100deg); } }
+/* A short acknowledgement, with a quieter late/night expression. */
+#egg[data-life=resting][data-reunion=true][data-day-period=day] .shell { animation: baby-joy 700ms ease-in-out 2; }
+#egg[data-reunion=true]:not([data-day-period=day]) .shell::before { height: 5px; }
 @media (prefers-reduced-motion: reduce) {
+  #egg[data-life=resting][data-reunion=true][data-day-period=day] .shell { animation: none; }
   #egg[data-life=resting][data-social] .shell, #emotion-orb[data-play=true] { animation: none; }
   #egg[data-life=resting][data-social=chase] { transition: none; }
 }

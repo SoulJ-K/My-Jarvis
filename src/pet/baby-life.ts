@@ -10,6 +10,13 @@ export interface BabyLife {
 export interface BabyExperience { kind: 'food_offered' | 'meal_finished' | 'sleep_completed' | 'touch' | 'sleep_touch'; atMs: number; durationMs?: number }
 export type BabyCommand = { type: 'tick' } | { type: 'touch' } | { type: 'feed'; offerId: string; x: number; y: number };
 export const cycle = BABY_TIMING.awake + BABY_TIMING.sleep;
+/** Provisional device-local boundaries, not a learned schedule or final product policy. */
+export const BABY_DAY_HOURS = Object.freeze({ day: 7, night: 20, lateNight: 23 });
+export function babyDayPeriod(atMs: number): 'day' | 'night' | 'late-night' {
+  const hour = new Date(atMs).getHours();
+  return hour < BABY_DAY_HOURS.day || hour >= BABY_DAY_HOURS.lateNight ? 'late-night' :
+    hour >= BABY_DAY_HOURS.night ? 'night' : 'day';
+}
 export function initialBabyLife(now: number): BabyLife {
   return { revision: 0, observedAtMs: now, elapsedMs: 0, hungerMs: 0, lastCareElapsedMs: null, meal: null };
 }
@@ -27,11 +34,12 @@ export function validFoodPoint(x: unknown, y: unknown): boolean {
 }
 export function babyView(s: BabyLife) {
   const phase = s.elapsedMs % cycle;
+  const dayPeriod = babyDayPeriod(s.observedAtMs);
   const behavior: 'approaching' | 'eating' | 'sleeping' | 'drowsy' | 'resting' = s.meal ? (s.elapsedMs - s.meal.startedElapsedMs < BABY_TIMING.approach ? 'approaching' : 'eating') :
-    phase >= BABY_TIMING.awake ? 'sleeping' : phase >= BABY_TIMING.awake - BABY_TIMING.drowsy ? 'drowsy' : 'resting';
+    phase >= BABY_TIMING.awake ? 'sleeping' : dayPeriod === 'late-night' || phase >= BABY_TIMING.awake - BABY_TIMING.drowsy ? 'drowsy' : 'resting';
   const food = !s.meal && behavior !== 'sleeping' && s.hungerMs >= BABY_TIMING.hungry &&
     (s.elapsedMs - BABY_TIMING.hungry) % BABY_TIMING.foodEvery < BABY_TIMING.foodVisible;
-  return { revision: s.revision, behavior, offerId: food ? `food:${Math.floor(s.elapsedMs / BABY_TIMING.foodEvery)}` : null,
+  return { revision: s.revision, behavior, dayPeriod, offerId: food ? `food:${Math.floor(s.elapsedMs / BABY_TIMING.foodEvery)}` : null,
     meal: s.meal ? { x: s.meal.x, y: s.meal.y } : null };
 }
 export type BabyView = ReturnType<typeof babyView>;
@@ -67,4 +75,4 @@ export function advanceBabyLife(before: BabyLife, now: number, command: BabyComm
   return { state: s, events };
 }
 
-export type BabyPresentation = BabyView & { social: import('./baby-social').BabySocialView };
+export type BabyPresentation = BabyView & { social: import('./baby-social').BabySocialView; reunion?: boolean };

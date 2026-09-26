@@ -1,4 +1,4 @@
-import { validFoodPoint } from '../pet/baby-life';
+import { babyDayPeriod, validFoodPoint } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import type { EggSnapshot } from '../shared/pet';
 import { EggGesture } from './egg-gesture';
 import type { EggCareKind } from '../pet/egg-life';
-import { EggBrain } from '../pet/brain';
+import { BabyReturnBrain, EggBrain } from '../pet/brain';
 
 const WIDTH = 180;
 const HEIGHT = 200;
@@ -139,9 +139,14 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     cancelGesture();
   };
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
+  // Capture the saved observation before the first page read advances life.
+  const returnBrain = new BabyReturnBrain(baby?.read()?.observedAtMs ?? null);
   const publishBaby = (view: ReturnType<BabyLifeRepository['view']>) => {
-    if (!win.isDestroyed()) win.webContents.send('baby:state', view);
-    return view;
+    const reunion = returnBrain.observe(Date.now(), win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked,
+      powerMonitor.getSystemIdleTime() * 1000);
+    const presentation = { ...view, reunion };
+    if (!win.isDestroyed()) win.webContents.send('baby:state', presentation);
+    return presentation;
   };
   let socialSuspended = false;
   let socialLocked = false;
@@ -154,7 +159,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const tickBaby = () => {
     if (!babyReady()) return;
     try {
-      const active = win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked && !drag;
+      const active = win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked && !drag &&
+        babyDayPeriod(Date.now()) === 'day';
       const cursor = active ? screen.getCursorScreenPoint() : null;
       const bounds = win.getBounds();
       const cursorNear = Boolean(cursor && Math.hypot(cursor.x - bounds.x - 90, cursor.y - bounds.y - 120) <= 75);
@@ -170,7 +176,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   ipcMain.handle('baby:read', (event, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0) throw new Error('BABY_REQUEST_DENIED');
     if (!babyReady()) return null;
-    return baby!.view(baby!.apply({ type: 'tick' }));
+    return publishBaby(baby!.view(baby!.apply({ type: 'tick' })));
   });
   ipcMain.handle('baby:feed', (event, ...args: unknown[]) => {
     const [offerId, x, y] = args;

@@ -5,12 +5,31 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { advanceBabyLife, babyView, BABY_TIMING as T, cycle, initialBabyLife, validateBabyLife } from '../src/pet/baby-life';
+import { advanceBabyLife, babyDayPeriod, babyView, BABY_TIMING as T, cycle, initialBabyLife, validateBabyLife } from '../src/pet/baby-life';
 import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
 const tick = { type: 'tick' } as const;
+test('provisional local day boundaries, late-night drowsiness, meal and sleep priority', () => {
+  const at = (hour: number, minute = 0) => new Date(2026, 8, 26, hour, minute).getTime();
+  for (const [hour, minute, expected] of [[6, 59, 'late-night'], [7, 0, 'day'], [19, 59, 'day'],
+    [20, 0, 'night'], [22, 59, 'night'], [23, 0, 'late-night'], [0, 0, 'late-night']] as const) {
+    assert.equal(babyDayPeriod(at(hour, minute)), expected);
+  }
+  assert.equal(babyView(initialBabyLife(at(12))).behavior, 'resting');
+  assert.equal(babyView(initialBabyLife(at(21))).behavior, 'resting');
+  const late = { ...initialBabyLife(at(23)), elapsedMs: T.hungry, hungerMs: T.hungry };
+  assert.equal(babyView(late).behavior, 'drowsy');
+  const meal = advanceBabyLife(late, at(23), { type: 'feed', offerId: babyView(late).offerId!, x: 116, y: 146 });
+  assert.equal(babyView(meal.state).behavior, 'approaching');
+  assert.equal(babyView(advanceBabyLife(meal.state, at(23) + T.meal, tick).state).behavior, 'drowsy');
+  assert.equal(babyView({ ...late, elapsedMs: T.awake }).behavior, 'sleeping');
+  // Morning is a body presentation change, not a repeated greeting or a new experience.
+  const morning = advanceBabyLife(initialBabyLife(at(6, 59)), at(7), tick);
+  assert.equal(babyView(morning.state).behavior, 'resting');
+  assert.deepEqual(morning.events, []);
+});
 function seed(t: test.TestContext, baby = true) {
   const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-baby-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -126,9 +145,14 @@ test('production startup restores the same named baby and an interrupted meal us
     const line = run.stdout.split('\n').find(s => s.startsWith('BABY_RESULT:'))!;
     assert.ok(line); return JSON.parse(line.slice('BABY_RESULT:'.length));
   };
-  assert.equal(launch(now + T.approach).behavior, 'eating');
+  const eating = launch(now + T.approach);
+  assert.equal(eating.behavior, 'eating');
+  assert.equal(eating.reunion, false);
   assert.equal(launch(now + T.meal).behavior, 'resting');
-  assert.equal(launch(now + T.awake).behavior, 'resting');
+  const returned = launch(now + T.awake);
+  assert.equal(returned.behavior, 'resting');
+  assert.equal(returned.reunion, true);
+  assert.equal(launch(now + T.awake + 1000).reunion, false, 'quick restart does not replay a return');
 });
 test('v4 migration failure rolls back schema/version and preserves original backup', t => {
   const directory = seed(t), file = petDatabasePath(directory);
