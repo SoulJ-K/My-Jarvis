@@ -1,3 +1,4 @@
+import { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, dialog, Menu, nativeImage, powerMonitor, Tray, type BrowserWindow } from 'electron';
 import { openEggLife } from '../storage/egg-life-repository';
 import { createPetWindow, initialPosition } from './windows';
@@ -56,6 +57,7 @@ export function startJarvis(options: {
     });
     let state = lifecycle.read();
     hatching = state.ready && state.name === null;
+    const baby = new BabyLifeRepository(app.getPath('userData'));
     const life = openEggLife(app.getPath('userData'));
     const checkpoint = () => {
       if (state.ready) return;
@@ -63,11 +65,12 @@ export function startJarvis(options: {
     };
     if (!state.ready) life.checkpoint();
     const timer = setInterval(checkpoint, 60_000);
-    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); lifecycle.close(); });
+    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); lifecycle.close(); baby.close(); });
+    let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
     win = await createPetWindow(pet, show && !hatching, kind => {
       if (state.ready) throw new Error('EGG_CARE_ENDED');
       life.care(kind);
-    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }));
+    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby, () => panels?.open());
     win.on('closed', () => app.quit());
     let refreshTray = () => {};
     if (hatching) {
@@ -87,7 +90,6 @@ export function startJarvis(options: {
     });
     // Hidden automated runs never request macOS notification permission.
     const scheduleNotices = show && !options.notifySchedule ? scheduleNotifications() : undefined;
-    let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
     let service: TimerService | undefined;
     let schedules: ReminderService | undefined;
     try {

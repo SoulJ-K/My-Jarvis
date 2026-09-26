@@ -1,3 +1,4 @@
+import { initialBabyLife } from '../pet/baby-life';
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath } from './pet-repository';
@@ -92,6 +93,11 @@ export class LifecycleRepository {
         if (after !== before) {
           this.db.prepare('UPDATE pet SET stage=?, name=? WHERE singleton=1').run(after.stage, after.name);
           this.db.prepare('UPDATE lifecycle SET snapshot=? WHERE singleton=1').run(JSON.stringify(after));
+          // v4: anchor life at the name commit, even if the page never loads.
+          // A failed initialization rolls the name and stage checkpoint back too.
+          if (command.type === 'name' && this.db.prepare('PRAGMA user_version').get()?.user_version === 4) {
+            this.db.prepare('INSERT INTO baby_life VALUES(1, ?)').run(JSON.stringify(initialBabyLife(Date.now())));
+          }
         }
         return Object.freeze(after);
       });

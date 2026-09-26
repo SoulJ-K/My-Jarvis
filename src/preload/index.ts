@@ -29,3 +29,18 @@ contextBridge.exposeInMainWorld('petBrain', {
     return () => ipcRenderer.removeListener('pet:state', receive);
   },
 });
+
+contextBridge.exposeInMainWorld('babyLife', {
+  read: () => ipcRenderer.invoke('baby:read'),
+  feed: (offerId: string, x: number, y: number) => ipcRenderer.invoke('baby:feed', offerId, x, y),
+  subscribe: (listener: (state: import('../pet/baby-life').BabyView) => void) => {
+    const receive = (_event: Electron.IpcRendererEvent, state: import('../pet/baby-life').BabyView) => listener(state);
+    ipcRenderer.on('baby:state', receive);
+    return () => ipcRenderer.removeListener('baby:state', receive);
+  },
+  onSaveFailed: (listener: () => void) => {
+    const receive = () => listener();
+    ipcRenderer.on('baby:save-failed', receive);
+    return () => ipcRenderer.removeListener('baby:save-failed', receive);
+  },
+});

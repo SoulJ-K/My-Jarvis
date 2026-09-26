@@ -1,3 +1,5 @@
+import { babyView, validFoodPoint } from '../pet/baby-life';
+import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -23,7 +25,7 @@ export function initialPosition() {
 }
 
 export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
-  currentPet: () => EggSnapshot & { name?: string | null } = () => pet) {
+  currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository, onBabyClick: () => void = () => {}) {
   const page = path.join(__dirname, '../renderer/index.html');
   const win = new BrowserWindow({
     ...initialPosition(), width: WIDTH, height: HEIGHT,
@@ -125,12 +127,39 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
         win.webContents.send('egg:save-failed');
       }
     }
+    if (kind && currentPet().stage === 'baby' && baby) {
+      try { publishBaby(babyView(baby.apply({ type: 'touch' }))); }
+      catch { win.webContents.send('egg:save-failed'); }
+      onBabyClick();
+    }
     return moved;
   };
   const cancel = (event: IpcMainEvent) => {
     if (!validSender(event)) return;
     cancelGesture();
   };
+  const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
+  const publishBaby = (view: ReturnType<typeof babyView>) => {
+    if (!win.isDestroyed()) win.webContents.send('baby:state', view);
+    return view;
+  };
+  const tickBaby = () => {
+    if (!babyReady()) return;
+    try { publishBaby(babyView(baby!.apply({ type: 'tick' }))); }
+    catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
+  };
+  const babyTimer = setInterval(tickBaby, 1000);
+  ipcMain.handle('baby:read', (event, ...args: unknown[]) => {
+    if (!validSender(event) || args.length !== 0) throw new Error('BABY_REQUEST_DENIED');
+    if (!babyReady()) return null;
+    return babyView(baby!.apply({ type: 'tick' }));
+  });
+  ipcMain.handle('baby:feed', (event, ...args: unknown[]) => {
+    const [offerId, x, y] = args;
+    if (!validSender(event) || !babyReady() || args.length !== 3 || typeof offerId !== 'string' ||
+      !/^food:[0-9]{1,16}$/.test(offerId) || !validFoodPoint(x, y)) throw new Error('BABY_REQUEST_DENIED');
+    return publishBaby(babyView(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number })));
+  });
   ipcMain.on('egg:hover', hover);
   ipcMain.on('egg:drag-start', start);
   ipcMain.on('egg:drag-move', move);
@@ -145,6 +174,9 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     return currentPet();
   });
   win.on('closed', () => {
+    clearInterval(babyTimer);
+    ipcMain.removeHandler('baby:read');
+    ipcMain.removeHandler('baby:feed');
     clearArm();
     brain.dispose();
     screen.removeListener('display-removed', recoverPosition);
