@@ -1,0 +1,25 @@
+.hatch-sequence { --ink: #283448; --surface: #f6f4ed; --line: #526782; color: var(--ink); background: var(--surface); font: 16px/1.5 system-ui, sans-serif; padding: 24px; text-align: center; border-radius: 24px; box-sizing: border-box; }
+.hatch-sequence button, .hatch-sequence input { font: inherit; min-height: 44px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 8px 16px; }
+.hatch-sequence button { color: white; background: #354e70; cursor: pointer; }
+.hatch-sequence button:hover { background: #283e5c; }
+.hatch-sequence button:disabled { opacity: .6; cursor: wait; }
+.hatch-sequence :focus-visible { outline: 3px solid #a35a16; outline-offset: 4px; }
+.hatch-sequence label { display: block; }
+.hatch-sequence input { display: block; width: 100%; margin: 12px 0; color: var(--ink); background: white; }
+.hatch-sequence [role=alert] { color: #96342d; }
+.hatch-art { position: relative; height: 180px; width: 200px; max-width: 100%; margin: auto; }
+.hatch-art span { position: absolute; display: block; }
+.hatch-egg { width: 96px; height: 126px; background: #faf1d7; border: 3px solid #a79671; border-radius: 50% 50% 45% 45%; left: 48px; bottom: 8px; }
+.hatch-crack { display: none !important; height: 56px; width: 22px; background: #756749; clip-path: polygon(30% 0, 65% 35%, 38% 55%, 90% 100%, 0 57%, 33% 33%); left: 92px; bottom: 65px; }
+.hatch-orb { display: none !important; width: 28px; height: 28px; border-radius: 50%; background: #eec851; border: 2px solid #9c7416; left: 150px; bottom: 116px; }
+.hatch-baby { display: none !important; width: 90px; height: 85px; border-radius: 48% 48% 42% 42%; background: #bed8ce; border: 3px solid #527c71; left: 53px; bottom: 16px; }
+.hatch-baby::before { content: ''; position: absolute; width: 6px; height: 9px; border-radius: 50%; background: #283448; top: 28px; left: 24px; box-shadow: 29px 0 #283448; }
+[data-step=prelude] .hatch-egg { animation: hatch-sway 1.8s ease-in-out infinite; }
+[data-step=crack] .hatch-crack, [data-step=orb] .hatch-crack { display: block !important; }
+[data-step=orb] .hatch-orb, [data-step=shell] .hatch-orb, [data-step=baby] .hatch-orb, [data-step=contact] .hatch-orb, [data-step=naming] .hatch-orb, [data-step=life] .hatch-orb { display: block !important; }
+[data-step=shell] .hatch-egg { clip-path: polygon(0 35%, 20% 65%, 40% 45%, 60% 65%, 80% 45%, 100% 35%, 100% 100%, 0 100%); }
+[data-step=baby] .hatch-egg, [data-step=contact] .hatch-egg, [data-step=naming] .hatch-egg, [data-step=life] .hatch-egg { display: none; }
+[data-step=baby] .hatch-baby, [data-step=contact] .hatch-baby, [data-step=naming] .hatch-baby, [data-step=life] .hatch-baby { display: block !important; }
+[data-step=contact] .hatch-baby { transform: translateY(6px); }
+@keyframes hatch-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@media (prefers-reduced-motion: reduce) { .hatch-egg { animation: none !important; } }
