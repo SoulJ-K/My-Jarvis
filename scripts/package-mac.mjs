@@ -1,0 +1,74 @@
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import electron from 'electron';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+
+// Local preview only. This is deliberately not a release-signing pipeline:
+// no identity/keychain access, hardened runtime, notarization or installation.
+// https://www.electronjs.org/docs/latest/tutorial/application-distribution
+export function packageMac({ validation = false } = {}) {
+  if (process.platform !== 'darwin') throw new Error('MACOS_REQUIRED');
+  const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+  if (!existsSync(path.join(root, pkg.main))) throw new Error('BUILD_REQUIRED');
+  const source = path.resolve(electron, '../../..');
+  const out = path.join(root, 'out');
+  mkdirSync(out, { recursive: true });
+  // Every build gets a fresh directory. Never overwrite an existing preview.
+  const directory = mkdtempSync(path.join(out, 'mac-preview-'));
+  const name = validation ? 'Jarvis Pet Validation' : 'Jarvis Pet Preview';
+  const bundleId = validation ? 'local.jarvispet.validation' : 'local.jarvispet.preview';
+  const bundle = path.join(directory, name + '.app');
+  execFileSync('/usr/bin/ditto', [source, bundle]);
+  const contents = path.join(bundle, 'Contents');
+  const resources = path.join(contents, 'Resources');
+  rmSync(path.join(resources, 'default_app.asar'), { force: true });
+  const payload = path.join(resources, 'app');
+  mkdirSync(payload);
+  // Allowlist the application output, never the repository, tests, .env or DBs.
+  const sourceRoot = path.join(root, 'src');
+  for (const entry of readdirSync(sourceRoot, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || entry.name.endsWith('.d.ts') || !/\.(ts|html|css)$/.test(entry.name)) continue;
+    const relative = path.relative(sourceRoot, path.join(entry.parentPath, entry.name)).replace(/\.ts$/, '.js');
+    const destination = path.join(payload, 'dist/src', relative);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    cpSync(path.join(root, 'dist/src', relative), destination);
+  }
+  writeFileSync(path.join(payload, 'package.json'), JSON.stringify({
+    name: pkg.name, version: pkg.version, private: true, main: 'launch.cjs',
+  }, null, 2) + '\n');
+  const launcher = validation
+    ? readFileSync(path.join(root, 'scripts/mac-validation-entry.cjs'), 'utf8')
+    : `const { app } = require('electron');\nconst path = require('node:path');\n// Preview builds never open the user's existing pet data.\nconst directory = path.join(app.getPath('appData'), 'Jarvis Pet Preview');\napp.setPath('userData', directory);\napp.setPath('sessionData', directory);\nrequire('./${pkg.main}');\n`;
+  writeFileSync(path.join(payload, 'launch.cjs'), launcher);
+  const edit = (plist, key, value) => execFileSync('/usr/bin/plutil', ['-replace', key, '-string', value, plist]);
+  const plist = path.join(contents, 'Info.plist');
+  renameSync(path.join(contents, 'MacOS/Electron'), path.join(contents, 'MacOS', name));
+  for (const [key, value] of Object.entries({
+    CFBundleName: name, CFBundleDisplayName: name, CFBundleIdentifier: bundleId,
+    CFBundleExecutable: name,
+    CFBundleShortVersionString: pkg.version, CFBundleVersion: pkg.version,
+  })) edit(plist, key, value);
+  const frameworks = path.join(contents, 'Frameworks');
+  for (const entry of readdirSync(frameworks).filter(name => name.endsWith('.app'))) {
+    const helper = path.join(frameworks, entry, 'Contents/Info.plist');
+    const suffix = entry.replace(/^Electron Helper/, '').replace(/\.app$/, '').trim().toLowerCase().replace(/[^a-z]/g, '');
+    edit(helper, 'CFBundleIdentifier', `${bundleId}.helper${suffix ? '.' + suffix : ''}`);
+    edit(helper, 'CFBundleName', `${name} Helper${suffix ? ' ' + suffix : ''}`);
+    edit(helper, 'CFBundleDisplayName', `${name} Helper${suffix ? ' ' + suffix : ''}`);
+  }
+  // --deep is sufficient for this local ad-hoc experiment, not Developer ID
+  // release signing. It touches only our newly-created copy of Electron.app.
+  execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'pipe' });
+  execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle], { stdio: 'pipe' });
+  return { directory, bundle, executable: path.join(contents, 'MacOS', name), payload, bundleId };
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const result = packageMac();
+  console.log(`LOCAL_PREVIEW_APP:${result.bundle}`);
+  console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
+  console.log('DATA:separate Jarvis Pet Preview directory; existing pet data is not used');
+}
