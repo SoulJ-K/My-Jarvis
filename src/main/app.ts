@@ -8,6 +8,8 @@ import { ScheduleRepository } from '../storage/schedule-repository';
 import { scheduleNotifications, timerNotifications } from './notifications';
 import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
+import { LifecycleRepository } from '../storage/lifecycle-repository';
+import { createHatchWindow } from './hatch-window';
 
 // Test entry points call this same startup with isolated userData and hidden windows.
 // No test settings or storage paths are exposed to the renderer.
@@ -22,6 +24,13 @@ export function startJarvis(options: {
   let tray: Tray | undefined;
   let win: BrowserWindow | undefined;
   let cleanupTimers: (() => void) | undefined;
+  let hatch: Awaited<ReturnType<typeof createHatchWindow>> | undefined;
+  let hatching = false;
+  const showPet = () => {
+    if (!show) return;
+    if (hatching) hatch?.open();
+    else win?.showInactive();
+  };
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -30,26 +39,52 @@ export function startJarvis(options: {
     if (!win || win.isDestroyed()) return;
     const position = initialPosition();
     win.setPosition(position.x, position.y);
-    if (show) win.showInactive();
+    showPet();
   };
   app.on('second-instance', reset);
-  app.on('activate', () => { if (show) win?.showInactive(); });
+  app.on('activate', showPet);
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => { cleanupTimers?.(); cleanupTimers = undefined; tray?.destroy(); });
+  app.on('before-quit', () => { cleanupTimers?.(); cleanupTimers = undefined; hatch?.dispose(); tray?.destroy(); });
   app.whenReady().then(async () => {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
+    // No development trigger is supplied: ordinary launches cannot mark an egg ready.
+    const lifecycle = new LifecycleRepository(app.getPath('userData'), {
+      // User-selected first-name policy: trim outer whitespace, 1–20 code points.
+      namePolicy: { trim: true, maxCodePoints: 20 },
+    });
+    let state = lifecycle.read();
+    hatching = state.ready && state.name === null;
     const life = openEggLife(app.getPath('userData'));
-    life.checkpoint();
     const checkpoint = () => {
+      if (state.ready) return;
       try { life.checkpoint(); } catch { console.error('알 생활 저장 실패: WRITE_FAILED'); }
     };
+    if (!state.ready) life.checkpoint();
     const timer = setInterval(checkpoint, 60_000);
-    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); });
-    win = await createPetWindow(pet, show, kind => life.care(kind));
+    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); lifecycle.close(); });
+    win = await createPetWindow(pet, show && !hatching, kind => {
+      if (state.ready) throw new Error('EGG_CARE_ENDED');
+      life.care(kind);
+    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }));
     win.on('closed', () => app.quit());
-    const notifications = timerNotifications();
+    let refreshTray = () => {};
+    if (hatching) {
+      hatch = await createHatchWindow(lifecycle, show, saved => {
+        state = saved;
+        hatching = false;
+        // The idle pet must load its committed baby snapshot before becoming visible.
+        win!.setTitle('Jarvis Pet · 아기');
+        win!.webContents.once('did-finish-load', showPet);
+        win!.reload();
+        refreshTray();
+      });
+      hatch.open();
+    }
+    const notifications = timerNotifications(undefined, show ? {} : {
+      backend: { isSupported: () => false, create: () => { throw new Error('HIDDEN_NOTIFICATION_DISABLED'); } },
+    });
     // Hidden automated runs never request macOS notification permission.
     const scheduleNotices = show && !options.notifySchedule ? scheduleNotifications() : undefined;
     let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
@@ -85,16 +120,20 @@ export function startJarvis(options: {
     }
     if (show) {
       tray = new Tray(nativeImage.createEmpty());
-      tray.setTitle('알');
-      tray.setToolTip('Jarvis Pet · 알');
-      tray.setContextMenu(Menu.buildFromTemplate([
-        { label: 'Jarvis Pet · 알', enabled: false },
-        { label: '알을 처음 위치로', click: reset },
-        { label: '입력 / 타이머', enabled: Boolean(panels), click: () => panels?.open() },
-        { type: 'separator' },
-        { label: 'Jarvis Pet 종료', click: () => app.quit() },
-      ]));
-      console.log('Jarvis Pet: 저장된 알 실행 중. 메뉴 막대의 “알”에서 종료할 수 있습니다.');
+      refreshTray = () => {
+        const label = state.name ?? (hatching ? '첫 만남' : '알');
+        tray!.setTitle(label);
+        tray!.setToolTip(`Jarvis Pet · ${label}`);
+        tray!.setContextMenu(Menu.buildFromTemplate([
+          { label: `Jarvis Pet · ${label}`, enabled: false },
+          { label: hatching ? '첫 만남 이어보기' : '펫을 처음 위치로', click: reset },
+          { label: '입력 / 타이머', enabled: Boolean(panels), click: () => panels?.open() },
+          { type: 'separator' },
+          { label: 'Jarvis Pet 종료', click: () => app.quit() },
+        ]));
+      };
+      refreshTray();
+      console.log('Jarvis Pet: 저장된 펫 실행 중. 메뉴 막대에서 종료할 수 있습니다.');
     }
     await options.onReady?.(win);
   }).catch(error => {

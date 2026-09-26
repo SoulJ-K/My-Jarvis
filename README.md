@@ -4,11 +4,11 @@
 
 - **GitHub:** [SoulJ-K/My-Jarvis](https://github.com/SoulJ-K/My-Jarvis) — 비공개 저장소
 - **최종 작업 폴더:** `/Users/rkfrk/Desktop/My Jarvis`
-- **현재 저장 대상:** 기준 문서와 알 창·저장·기본 반응·돌봄 기록·입력창·5분 타이머·일회성 알람/리마인더, 부화 진행 구성요소. 최종 v0.1 제품은 아직 완성되지 않았다.
+- **현재 저장 대상:** 기준 문서와 알 창·저장·기본 반응·돌봄 기록·입력창·5분 타이머·일회성 알람/리마인더, 부화 화면 연결. 최종 v0.1 제품은 아직 완성되지 않았다.
 
 ## 현재 단계
 
-- **알 생활·5분 타이머·일회성 알람/리마인더의 로컬 흐름 구현 / 부화는 진행·저장 구성요소 검증, 실제 앱 연결과 자동 발동은 미구현 / 아기 생활은 미구현**
+- **알 생활·5분 타이머·일회성 알람/리마인더의 로컬 흐름 구현 / 부화 장면·이름 저장의 실제 앱 연결과 자동 검사 완료 / 부화 준비 자동 판단과 아기 생활은 미구현**
 - PRD v0.1, Decision Log v0.1, Character & Growth Design v0.1 정리 완료. 세 문서의 범위와 표현을 교차 검수했다.
 - Technical Design v0.1에 앱 구조, 데이터 모델, 작은 구현 단계와 검증 계획을 정리했다. 검토용 초안이며 최종 기술 구성을 확정한 것은 아니다.
 - 첫 기술 검증은 **Electron + TypeScript로 macOS부터 진행**하기로 정했다(Decision Log D-035). SQLite는 이후 D-039에서 선택했다. React 채택과 Windows 동작은 아직 확정·검증하지 않았다.
@@ -17,7 +17,7 @@
 - 경쟁제품 4종 심층분석 및 통합 경쟁분석 v0.2 완료
 - NekoAI를 AI 연결 없이 사용한 경험과 관계 UX 인사이트 기록
 
-문서 검수, 자동 검사, 사용자 실기기 확인을 구분한다. 저장·첫 클릭 반응은 [PR #4](https://github.com/SoulJ-K/My-Jarvis/pull/4)로 통합했다. 창 검증 [PR #5](https://github.com/SoulJ-K/My-Jarvis/pull/5), 알 돌봄 [PR #6](https://github.com/SoulJ-K/My-Jarvis/pull/6), 입력·타이머 [PR #7](https://github.com/SoulJ-K/My-Jarvis/pull/7)의 순서를 각각 보존했다. 후속 작업도 Mac 앱·알림 [PR #8](https://github.com/SoulJ-K/My-Jarvis/pull/8), 부화 구성요소 [PR #9](https://github.com/SoulJ-K/My-Jarvis/pull/9), 일회성 알람·리마인더 [PR #10](https://github.com/SoulJ-K/My-Jarvis/pull/10)로 나눠 기록했다. 각 PR의 실제 병합 상태는 GitHub 이력을 따른다. 시스템 알림의 화면 표시, 부화 자동 발동과 아기 생활은 아직 완료되지 않았다.
+문서 검수, 자동 검사, 사용자 실기기 확인을 구분한다. 저장·첫 클릭 반응은 [PR #4](https://github.com/SoulJ-K/My-Jarvis/pull/4)로 통합했다. 창 검증 [PR #5](https://github.com/SoulJ-K/My-Jarvis/pull/5), 알 돌봄 [PR #6](https://github.com/SoulJ-K/My-Jarvis/pull/6), 입력·타이머 [PR #7](https://github.com/SoulJ-K/My-Jarvis/pull/7)의 순서를 각각 보존했다. 후속 작업도 Mac 앱·알림 [PR #8](https://github.com/SoulJ-K/My-Jarvis/pull/8), 부화 구성요소 [PR #9](https://github.com/SoulJ-K/My-Jarvis/pull/9), 일회성 알람·리마인더 [PR #10](https://github.com/SoulJ-K/My-Jarvis/pull/10), 실제 앱의 부화 화면 연결 [PR #12](https://github.com/SoulJ-K/My-Jarvis/pull/12)로 나눠 기록했다. 각 PR의 실제 병합 상태는 GitHub 이력을 따른다. 시스템 알림의 화면 표시, 부화 준비 자동 판단과 아기 생활은 아직 완료되지 않았다.
 
 ## 담당 2: 작은 알 생활 확장 — 개별 검토용 브랜치
 

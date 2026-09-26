@@ -10,7 +10,7 @@ import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { openEggLife } from '../src/storage/egg-life-repository';
 
-// Test-only candidate; this is not a product name policy.
+// User-selected first-name policy; preparation remains a test-only trigger.
 const options = { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true };
 function directory(t: test.TestContext) {
   const dir = mkdtempSync(path.join(tmpdir(), 'jarvis-hatch-'));

@@ -4,7 +4,7 @@ interface Window {
     subscribe: (listener: (state: import('./pet-state').EggSnapshot) => void) => () => void;
   };
   petWindow: {
-    snapshot: () => Promise<import('./pet').EggSnapshot>;
+    snapshot: () => Promise<import('./pet').EggSnapshot & { name?: string | null }>;
     hover: (interactive: boolean) => void;
     beginDrag: () => void;
     onStrokeReady: (listener: () => void) => () => void;

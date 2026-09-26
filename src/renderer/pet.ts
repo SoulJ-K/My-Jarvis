@@ -3,6 +3,13 @@ const egg = document.querySelector<HTMLButtonElement>('#egg')!;
 window.petWindow.snapshot().then(pet => {
   egg.dataset.petId = pet.petId;
   egg.dataset.stage = pet.stage;
+  if (pet.stage === 'baby') {
+    egg.classList.add('baby-idle');
+    egg.title = '드래그: 이동';
+    egg.setAttribute('aria-label', `${pet.name ?? '아기'}, 쉬고 있어요. 드래그하면 이동합니다.`);
+    document.querySelector('#pet-name')!.textContent = pet.name ?? '';
+    document.querySelector('main')!.setAttribute('aria-label', 'Jarvis Pet 아기');
+  }
 }).catch(() => {
   egg.disabled = true;
   egg.setAttribute('aria-label', '알 정보를 불러오지 못했습니다. 앱을 다시 실행해 주세요.');
