@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -18,16 +18,43 @@ function directory(t: test.TestContext) {
   const value = mkdtempSync(path.join(tmpdir(),'jarvis-timer-restart-'));
   t.after(() => rmSync(value,{recursive:true,force:true})); return value;
 }
+function petIdentityAndCare(directory: string) {
+  const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+  try {
+    return {
+      pet: db.prepare('SELECT pet_id, created_at, stage FROM pet').all(),
+      care: db.prepare('SELECT kind, occurred_at_ms, elapsed_ms FROM egg_care ORDER BY id').all(),
+    };
+  } finally { db.close(); }
+}
 test('production entry registers, quits, restores same timer, cancels, quits and restores cancellation', t => {
   const dir = directory(t); const first = launch(dir,'register'); assert.equal(first.reply.ok,true);
-  const pet = readFileSync(petDatabasePath(dir));
+  // The integrated app checkpoints egg elapsed time on each launch. Timer actions
+  // must leave the egg identity and care events unchanged, not its raw DB bytes.
+  const pet = petIdentityAndCare(dir);
   const restored = launch(dir,'inspect');
   assert.equal(restored.after[0].id,first.after[0].id);
   assert.equal(restored.after[0].dueAt,first.after[0].dueAt);
   assert.equal(restored.after[0].status,'pending');
   assert.equal(launch(dir,'cancel').reply.ok,true);
   assert.deepEqual(launch(dir,'inspect').after,[]);
-  assert.deepEqual(readFileSync(petDatabasePath(dir)),pet);
+  assert.deepEqual(petIdentityAndCare(dir), pet);
+});
+test('integrated app keeps one egg care event while timer is saved, restored and cancelled', t => {
+  const dir = directory(t);
+  const first = launch(dir, 'care-and-timer');
+  assert.equal(first.reply.ok, true);
+  assert.equal(first.careCount, 1);
+  const restored = launch(dir, 'inspect');
+  assert.equal(restored.petId, first.petId);
+  assert.equal(restored.careCount, 1);
+  assert.equal(restored.after[0].id, first.after[0].id);
+  assert.equal(restored.after[0].dueAt, first.after[0].dueAt);
+  assert.equal(launch(dir, 'cancel').reply.ok, true);
+  const final = launch(dir, 'inspect');
+  assert.equal(final.petId, first.petId);
+  assert.equal(final.careCount, 1);
+  assert.deepEqual(final.after, []);
 });
 test('production restart recovers overdue inbox with no OS request and persists user acknowledgement', t => {
   const dir = directory(t); launch(dir,'register');
