@@ -49,3 +49,13 @@ test('production IPC, pause epochs, scene/name write failures and committed baby
   assert.equal(result.name, '별');
   assert.deepEqual(launch(directory, 'inspect'), result);
 });
+test('injected readiness policy: startup, resume and real care prepare without opening or witnessing; restart retains it', t => {
+  for (const mode of ['ready-startup', 'ready-live', 'ready-care']) {
+    const directory = workspace(t);
+    const ready = launch(directory, mode);
+    assert.equal(ready.ready, true);
+    assert.equal(ready.completed, null);
+    assert.equal(ready.stage, 'egg');
+    assert.deepEqual(launch(directory, 'inspect'), ready);
+  }
+});

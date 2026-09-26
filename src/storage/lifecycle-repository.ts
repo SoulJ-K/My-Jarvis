@@ -3,8 +3,9 @@ import { initialBabyLife } from '../pet/baby-life';
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath } from './pet-repository';
-import { openEggLife } from './egg-life-repository';
-import { advanceLifecycle, initialLifecycle, validateLifecycle, type Lifecycle, type LifecycleCommand, type NamePolicy } from '../pet/lifecycle';
+import { openEggLife, readEggCare, readEggLife } from './egg-life-repository';
+import { advanceEggLife } from '../pet/egg-life';
+import { advanceLifecycle, hatchReadiness, initialLifecycle, validateLifecycle, type HatchReadinessPolicy, type Lifecycle, type LifecycleCommand, type NamePolicy } from '../pet/lifecycle';
 
 export const lifecycleDatabasePath = petDatabasePath;
 export interface LifecycleOptions {
@@ -79,6 +80,29 @@ export class LifecycleRepository {
       if (pet?.stage !== state.stage || pet.name !== state.name) throw new Error();
       return Object.freeze(state);
     } catch { throw new Error('LIFECYCLE_STORAGE_INVALID'); }
+  }
+  /** Trusted main-process check, based solely on committed egg evidence. Preparing
+   * does not witness any scene, create an orb, name the pet, or change its stage. */
+  prepareIfReady(policy: HatchReadinessPolicy, now: number): Lifecycle {
+    // Validate even when already ready; bad configuration should not be hidden.
+    hatchReadiness({ elapsedMs: 0, observedAtMs: 0 }, [], policy);
+    try {
+      return this.transaction(() => {
+        const before = this.read();
+        if (before.ready) return before;
+        const life = advanceEggLife(readEggLife(this.db), now);
+        const result = hatchReadiness(life, readEggCare(this.db), policy);
+        const after = result.ready ? advanceLifecycle(before, { type: 'prepare' }, this.options.namePolicy) : before;
+        validateLifecycle(after, this.petId, this.options.namePolicy);
+        this.db.prepare('UPDATE egg_life SET elapsed_ms=?, observed_at_ms=? WHERE singleton=1')
+          .run(life.elapsedMs, life.observedAtMs);
+        if (after !== before) this.db.prepare('UPDATE lifecycle SET snapshot=? WHERE singleton=1').run(JSON.stringify(after));
+        return Object.freeze(after);
+      });
+    } catch (error) {
+      if (error instanceof Error && ['INVALID_TIME', 'INVALID_HATCH_EVIDENCE', 'LIFECYCLE_STORAGE_INVALID'].includes(error.message)) throw error;
+      throw new Error('LIFECYCLE_WRITE_FAILED');
+    }
   }
   /** Revision belongs to the displayed scene. Duplicate/late callbacks cannot skip
    * another scene. Callers render only the returned committed snapshot. */

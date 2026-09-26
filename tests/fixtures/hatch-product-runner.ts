@@ -4,15 +4,23 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import { petDatabasePath } from '../../src/storage/pet-repository';
+import { loadOrCreateEgg, petDatabasePath } from '../../src/storage/pet-repository';
+import { openEggLife } from '../../src/storage/egg-life-repository';
 import { hatchScenes, nextHatchStep, type Lifecycle } from '../../src/pet/lifecycle';
 import type { HatchView } from '../../src/shared/hatch';
 
 const lifecycle = require('../../src/main/app') as typeof import('../../src/main/app');
 const startJarvis = lifecycle.startJarvis;
 const [directory, mode] = process.argv.slice(2);
-if (!directory || !['inspect', 'step', 'exercise'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
+if (!directory || !['inspect', 'step', 'exercise', 'ready-live', 'ready-care', 'ready-startup'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
 app.setPath('userData', directory);
+const readinessMode = mode.startsWith('ready-');
+let eggNow = 0;
+if (readinessMode) {
+  eggNow = Date.parse(loadOrCreateEgg(directory).createdAt);
+  openEggLife(directory, () => eggNow).close();
+  if (mode === 'ready-startup') eggNow += 1000;
+}
 const timeout = setTimeout(() => app.exit(2), 25000);
 const register = ipcMain.handle.bind(ipcMain);
 const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
@@ -28,10 +36,46 @@ async function until(check: () => Promise<boolean>) {
   for (let i = 0; i < 150; i++) { if (await check()) return; await pause(); }
   throw new Error('UI_DID_NOT_SETTLE');
 }
-lifecycle.startJarvis = () => startJarvis({ show: false, onReady: async pet => {
+lifecycle.startJarvis = () => startJarvis({ show: false,
+  ...(readinessMode ? { hatchPolicy: { baseDurationMs: 1000, careReductionMs: { touch: 100, stroke: 200 }, maxCareReductionMs: 300, careIntervalMs: 100 }, eggNow: () => eggNow } : {}),
+  onReady: async pet => {
   const db = new DatabaseSync(petDatabasePath(directory));
   const state = (): Lifecycle => JSON.parse(String(db.prepare('SELECT snapshot FROM lifecycle').get()?.snapshot));
   const original = state();
+  if (readinessMode) {
+    if (mode !== 'ready-startup') {
+      assert.equal(original.ready, false);
+      assert.equal(BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Jarvis Pet · 첫 만남'), false);
+      eggNow += mode === 'ready-care' ? 900 : 1000;
+      if (mode === 'ready-care') {
+        await pet.webContents.executeJavaScript('window.petWindow.beginDrag(); window.petWindow.endDrag()');
+        assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 1);
+      } else {
+        powerMonitor.emit('lock-screen'); powerMonitor.emit('suspend');
+        // Resume advances elapsed time even while the lock remains in effect.
+        powerMonitor.emit('resume');
+      }
+    }
+    await until(async () => state().ready && BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Jarvis Pet · 첫 만남' && !w.webContents.isLoading()));
+    const prepared = state();
+    assert.equal(prepared.completed, null); assert.equal(prepared.stage, 'egg');
+    assert.equal(prepared.orbId, null); assert.equal(prepared.name, null); assert.equal(prepared.revision, 1);
+    const waiting = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남')!;
+    assert.equal(waiting.isVisible(), false);
+    assert.equal((await waiting.webContents.executeJavaScript('window.hatch.read()')).available, false);
+    powerMonitor.emit('unlock-screen'); powerMonitor.emit('resume');
+    await pause();
+    assert.deepEqual(state(), prepared);
+    assert.equal(waiting.isVisible(), false);
+    // Waiting for the user must not turn harmless egg care into a save error.
+    await new Promise(resolve => setTimeout(resolve, 750));
+    const count = Number(db.prepare('SELECT count(*) n FROM egg_care').get()?.n);
+    await pet.webContents.executeJavaScript('window.petWindow.beginDrag(); window.petWindow.endDrag()');
+    assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, count + 1);
+    assert.deepEqual(state(), prepared);
+    console.log(`HATCH_PRODUCT:${JSON.stringify(state())}`);
+    db.close(); clearTimeout(timeout); app.quit(); return;
+  }
   const win = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남');
   if (!win) {
     assert.ok(!original.ready || original.name !== null);

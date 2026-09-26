@@ -1,7 +1,24 @@
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath, PetStorageError } from './pet-repository';
-import { advanceEggLife, careForEgg, type EggCareKind, type EggLife } from '../pet/egg-life';
+import { advanceEggLife, careForEgg, type EggCareEvent, type EggCareKind, type EggLife } from '../pet/egg-life';
+
+/** Read on the caller's transaction so elapsed time and real care records agree. */
+export function readEggLife(db: DatabaseSync): EggLife {
+  const rows = db.prepare('SELECT elapsed_ms, observed_at_ms FROM egg_life WHERE singleton = 1').all();
+  const row = rows[0];
+  if (rows.length !== 1 || !Number.isSafeInteger(row.elapsed_ms) || Number(row.elapsed_ms) < 0 ||
+      !Number.isSafeInteger(row.observed_at_ms) || Number(row.observed_at_ms) < 0) {
+    throw new PetStorageError('INVALID_STORE');
+  }
+  return { elapsedMs: Number(row.elapsed_ms), observedAtMs: Number(row.observed_at_ms) };
+}
+
+export function readEggCare(db: DatabaseSync): EggCareEvent[] {
+  return db.prepare('SELECT kind, occurred_at_ms, elapsed_ms FROM egg_care ORDER BY id').all().map(row => ({
+    kind: row.kind as EggCareKind, occurredAtMs: Number(row.occurred_at_ms), elapsedMs: Number(row.elapsed_ms),
+  }));
+}
 
 /** Open only after the single-instance lock. Identity is validated before writable access. */
 export function openEggLife(userData: string, now: () => number = Date.now) {
@@ -13,13 +30,7 @@ export function openEggLife(userData: string, now: () => number = Date.now) {
     catch (error) { db.exec('ROLLBACK'); throw error; }
   };
   function read(): EggLife {
-    const rows = db.prepare('SELECT elapsed_ms, observed_at_ms FROM egg_life WHERE singleton = 1').all();
-    const row = rows[0];
-    if (rows.length !== 1 || !Number.isSafeInteger(row.elapsed_ms) || Number(row.elapsed_ms) < 0 ||
-      !Number.isSafeInteger(row.observed_at_ms) || Number(row.observed_at_ms) < 0) {
-      throw new PetStorageError('INVALID_STORE');
-    }
-    return { elapsedMs: Number(row.elapsed_ms), observedAtMs: Number(row.observed_at_ms) };
+    return readEggLife(db);
   }
   function write(life: EggLife) {
     db.prepare('UPDATE egg_life SET elapsed_ms = ?, observed_at_ms = ? WHERE singleton = 1')
