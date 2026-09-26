@@ -1,6 +1,6 @@
-/** Identity-only view. Egg life and actual care events are persisted separately. */
+/** Identity and current growth view (legacy EggSnapshot name). Egg life and actual care events are persisted separately. */
 export interface EggSnapshot {
   readonly petId: string;
   readonly createdAt: string;
-  readonly stage: 'egg';
+  readonly stage: 'egg' | 'baby';
 }

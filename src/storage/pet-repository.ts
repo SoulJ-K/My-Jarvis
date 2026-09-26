@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, lstatSync, mkdirSync, openSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { validateLifecycle, type Lifecycle } from '../pet/lifecycle';
 import type { EggSnapshot } from '../shared/pet';
 
 const FORMAT_VERSION = 1;
@@ -24,19 +25,30 @@ function readEgg(db: DatabaseSync): EggSnapshot {
   if (db.prepare('PRAGMA application_id').get()?.application_id !== APPLICATION_ID) {
     throw new PetStorageError('INVALID_STORE');
   }
-  if (![1, 2].includes(Number(db.prepare('PRAGMA user_version').get()?.user_version))) {
+  const version = Number(db.prepare('PRAGMA user_version').get()?.user_version);
+  if (![1, 2, 3].includes(version)) {
     throw new PetStorageError('UNSUPPORTED_FORMAT');
   }
   const rows = db.prepare('SELECT singleton, pet_id, created_at, stage FROM pet LIMIT 2').all();
   const row = rows[0];
-  if (rows.length !== 1 || row.singleton !== 1 || row.stage !== 'egg' ||
+  if (rows.length !== 1 || row.singleton !== 1 || !(version === 3 ? ['egg', 'baby'] : ['egg']).includes(String(row.stage)) ||
       typeof row.pet_id !== 'string' ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(row.pet_id) ||
       typeof row.created_at !== 'string' || !Number.isFinite(Date.parse(row.created_at)) ||
       new Date(row.created_at).toISOString() !== row.created_at) {
     throw new PetStorageError('INVALID_STORE');
   }
-  return Object.freeze({ petId: row.pet_id, createdAt: row.created_at, stage: 'egg' });
+  if (version === 3) {
+    const lifecycle = db.prepare('SELECT singleton, snapshot FROM lifecycle LIMIT 2').all();
+    const name = db.prepare('SELECT name FROM pet WHERE singleton=1').get()?.name;
+    if (lifecycle.length !== 1 || lifecycle[0].singleton !== 1 || typeof lifecycle[0].snapshot !== 'string') throw new PetStorageError('INVALID_STORE');
+    try {
+      const state: Lifecycle = JSON.parse(lifecycle[0].snapshot);
+      validateLifecycle(state, row.pet_id, { trim: false, maxCodePoints: Number.MAX_SAFE_INTEGER });
+      if (state.stage !== row.stage || state.name !== name) throw new Error();
+    } catch { throw new PetStorageError('INVALID_STORE'); }
+  }
+  return Object.freeze({ petId: row.pet_id, createdAt: row.created_at, stage: row.stage as 'egg' | 'baby' });
 }
 
 /** Main process only. Call after acquiring Electron's single-instance lock.
