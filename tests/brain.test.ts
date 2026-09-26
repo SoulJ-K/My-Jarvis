@@ -76,3 +76,15 @@ test('closing the owner cancels pending work and ignores future touches', () => 
   brain.touch();
   assert.equal(seen.length, 1);
 });
+
+test('stroke gives its own short response without queueing other care', () => {
+  const clock = new ManualClock();
+  const brain = new EggBrain(clock, () => {});
+  brain.touch('stroke');
+  assert.equal(brain.snapshot().behavior, 'soothed');
+  brain.touch();
+  brain.touch('stroke');
+  assert.equal(brain.snapshot().revision, 1);
+  clock.advance(EGG_REACTION_MS);
+  assert.equal(brain.snapshot().behavior, 'idle');
+});

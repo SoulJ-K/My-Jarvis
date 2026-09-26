@@ -6,6 +6,16 @@ contextBridge.exposeInMainWorld('petWindow', {
   snapshot: () => ipcRenderer.invoke('egg:snapshot'),
   hover: (interactive: boolean) => ipcRenderer.send('egg:hover', interactive),
   beginDrag: () => ipcRenderer.send('egg:drag-start'),
+  onStrokeReady: (listener: () => void) => {
+    const receive = () => listener();
+    ipcRenderer.on('egg:stroke-ready', receive);
+    return () => ipcRenderer.removeListener('egg:stroke-ready', receive);
+  },
+  onSaveFailed: (listener: () => void) => {
+    const receive = () => listener();
+    ipcRenderer.on('egg:save-failed', receive);
+    return () => ipcRenderer.removeListener('egg:save-failed', receive);
+  },
   moveDrag: () => ipcRenderer.send('egg:drag-move'),
   endDrag: () => ipcRenderer.invoke('egg:drag-end'),
   cancelDrag: () => ipcRenderer.send('egg:drag-cancel'),

@@ -1,4 +1,5 @@
 import { app, dialog, Menu, nativeImage, Tray, type BrowserWindow } from 'electron';
+import { openEggLife } from '../storage/egg-life-repository';
 import { createPetWindow, initialPosition } from './windows';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 
@@ -31,7 +32,14 @@ export function startJarvis(options: {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
-    win = await createPetWindow(pet, show);
+    const life = openEggLife(app.getPath('userData'));
+    life.checkpoint();
+    const checkpoint = () => {
+      try { life.checkpoint(); } catch { console.error('알 생활 저장 실패: WRITE_FAILED'); }
+    };
+    const timer = setInterval(checkpoint, 60_000);
+    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); });
+    win = await createPetWindow(pet, show, kind => life.care(kind));
     win.on('closed', () => app.quit());
     if (show) {
       tray = new Tray(nativeImage.createEmpty());
