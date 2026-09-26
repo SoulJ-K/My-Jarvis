@@ -11,7 +11,7 @@ Thumbs.db
 *.key
 
 # 개발 중 설치·생성되는 파일
-node_modules/
+node_modules
 dist/
 out/
 coverage/
