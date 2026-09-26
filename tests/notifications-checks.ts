@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { app, type Notification } from 'electron';
-import { timerNotifications } from '../src/main/notifications';
+import { app, type Notification, type NotificationConstructorOptions } from 'electron';
+import { scheduleNotifications, timerNotifications } from '../src/main/notifications';
+import type { ScheduleRecord } from '../src/shared/schedule';
 
 class FakeNotification extends EventEmitter {
   closed = false;
@@ -69,6 +70,20 @@ app.whenReady().then(async () => {
     assert.deepEqual(results, [supported ? 'failed' : 'unsupported']);
     notices.dispose();
   }
-  console.log('PASS: 8 notification lifecycle cases (show/failure ordering, close, timeout, disposal, show/constructor exceptions, unsupported)');
+  const messages: NotificationConstructorOptions[] = [];
+  const scheduleFake = new FakeNotification();
+  scheduleFake.onShow = () => scheduleFake.emit('show');
+  const scheduleResults: string[] = [];
+  const schedule = scheduleNotifications(undefined, { backend: {
+    isSupported: () => true,
+    create: options => { messages.push(options); return scheduleFake as unknown as Notification; },
+  } });
+  schedule.notify({ kind: 'reminder', content: '서류 확인' } as ScheduleRecord,
+    state => scheduleResults.push(state));
+  assert.equal(messages[0].title, 'Jarvis Pet · 리마인더');
+  assert.equal(messages[0].body, '서류 확인');
+  assert.deepEqual(scheduleResults, ['shown']);
+  schedule.dispose();
+  console.log('PASS: 8 notification lifecycle cases and schedule content adapter (no native permission request)');
   app.quit();
 }).catch(error => { console.error(error); app.exit(1); });

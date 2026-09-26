@@ -1,5 +1,7 @@
 import { Notification, type NotificationConstructorOptions } from 'electron';
 import type { NotifyTimer } from '../assistant/timer';
+import type { NotifySchedule } from '../assistant/reminders';
+import type { ScheduleRecord } from '../shared/schedule';
 import type { SystemDelivery } from '../shared/timer';
 
 // Kept at the main-process boundary; tests supply a platform double without
@@ -9,20 +11,23 @@ type NotificationBackend = {
   create(options: NotificationConstructorOptions): Pick<Notification, 'once' | 'removeAllListeners' | 'show' | 'close'>;
 };
 
-export function timerNotifications(onFailure?: (message: string) => void, options: {
+type NotificationOptions = {
   backend?: NotificationBackend;
   outcomeTimeoutMs?: number;
-} = {}): { notify: NotifyTimer; dispose(): void } {
+};
+
+function notificationQueue<T>(message: (item: T) => NotificationConstructorOptions,
+  onFailure?: (message: string) => void, options: NotificationOptions = {}) {
   const backend = options.backend ?? { isSupported: () => Notification.isSupported(), create: values => new Notification(values) };
   const active = new Set<() => void>();
   let disposed = false;
   return {
-    notify(report) {
+    notify(item: T, report: (state: SystemDelivery) => void) {
       if (disposed) return;
       let notification: ReturnType<NotificationBackend['create']>;
       try {
         if (!backend.isSupported()) { report('unsupported'); return; }
-        notification = backend.create({ title: 'Jarvis Pet · 앱 안내', body: '5분 타이머가 끝났습니다.', silent: false });
+        notification = backend.create(message(item));
       } catch { report('failed'); return; }
       let settled = false;
       const settle = (result: SystemDelivery) => {
@@ -52,4 +57,21 @@ export function timerNotifications(onFailure?: (message: string) => void, option
     },
     dispose() { disposed = true; for (const cancel of active) cancel(); },
   };
+}
+
+export function timerNotifications(onFailure?: (message: string) => void, options: NotificationOptions = {}):
+  { notify: NotifyTimer; dispose(): void } {
+  const queue = notificationQueue<void>(() => ({
+    title: 'Jarvis Pet · 앱 안내', body: '5분 타이머가 끝났습니다.', silent: false,
+  }), onFailure, options);
+  return { notify: report => queue.notify(undefined, report), dispose: () => queue.dispose() };
+}
+
+export function scheduleNotifications(onFailure?: (message: string) => void, options: NotificationOptions = {}):
+  { notify: NotifySchedule; dispose(): void } {
+  const queue = notificationQueue<ScheduleRecord>(item => ({
+    title: item.kind === 'alarm' ? 'Jarvis Pet · 알람' : 'Jarvis Pet · 리마인더',
+    body: item.content, silent: false,
+  }), onFailure, options);
+  return { notify: (item, report) => queue.notify(item, report), dispose: () => queue.dispose() };
 }
