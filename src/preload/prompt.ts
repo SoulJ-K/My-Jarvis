@@ -19,3 +19,16 @@ contextBridge.exposeInMainWorld('timerPanel', {
     return () => ipcRenderer.removeListener('prompt:opened', listener);
   },
 });
+contextBridge.exposeInMainWorld('schedulePanel', {
+  read: () => ipcRenderer.invoke('schedule:read'),
+  preview: (id: string, input: string) => ipcRenderer.invoke('schedule:preview', id, input),
+  confirm: (id: string) => ipcRenderer.invoke('schedule:confirm', id),
+  discard: () => ipcRenderer.invoke('schedule:discard'),
+  cancel: (id: string) => ipcRenderer.invoke('schedule:cancel', id),
+  acknowledge: (id: string) => ipcRenderer.invoke('schedule:ack', id),
+  displayed: (id: string) => ipcRenderer.invoke('schedule:displayed', id),
+  subscribe: (listener: () => void) => {
+    ipcRenderer.on('schedule:changed', listener);
+    return () => ipcRenderer.removeListener('schedule:changed', listener);
+  },
+});

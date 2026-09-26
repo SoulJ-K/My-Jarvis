@@ -5,12 +5,15 @@ import electron from 'electron';
 for (const [args, asNode] of [
   [['--test', 'dist/tests/brain.test.js', 'dist/tests/egg-life.test.js'], true],
   [['--test', 'dist/tests/timer.test.js'], true],
+  [['--test', 'dist/tests/reminders.test.js'], true],
+  [['--test', 'dist/tests/schedule-restart.test.js'], true],
   [['--test', 'dist/tests/timer-restart.test.js'], true],
   [['--test', 'dist/tests/storage.test.js'], true],
   [['--test', 'dist/tests/startup.test.js'], true],
   [['dist/tests/egg-smoke.js'], false],
   [['dist/tests/window-behavior.js'], false],
   [['dist/tests/timer-smoke.js'], false],
+  [['dist/tests/schedule-smoke.js'], false],
 ]) {
   const env = { ...process.env };
   if (asNode) env.ELECTRON_RUN_AS_NODE = '1';
