@@ -178,3 +178,25 @@ test('autonomous solo orb play does not manufacture closeness to an absent user'
   assert.equal(played.state.familiarity, 0);
   assert.deepEqual(played.events, ['orb_play']);
 });
+
+test('an explicit orb request can take over autonomous play without resetting its own five-minute gap', () => {
+  const solo = advance(initialBabySocial(), T.playGap, true, active);
+  const requested = advance(solo.state, T.playGap + 1, true, { type: 'orb' });
+  assert.equal(requested.state.play, 'orb');
+  assert.equal(requested.state.playUntil, T.playGap + 1 + T.play);
+  assert.deepEqual(requested.events, ['orb_play']);
+  assert.equal(requested.state.nextRequestedPlay, T.playGap + 1 + T.playGap);
+  const repeated = advance(requested.state, T.playGap + T.play + 2, true, { type: 'orb' });
+  assert.equal(repeated.state.play, null);
+  assert.deepEqual(repeated.events, []);
+});
+
+test('an older v5 snapshot without the request clock still accepts an explicit orb request', () => {
+  const old = initialBabySocial();
+  delete old.nextRequestedPlay;
+  old.nextPlay = T.playGap;
+  validateBabySocial(old);
+  const requested = advance(old, 1, true, { type: 'orb' });
+  assert.deepEqual(requested.events, ['orb_play']);
+  assert.equal(requested.state.nextRequestedPlay, 1 + T.playGap);
+});

@@ -9,6 +9,8 @@ export interface BabySocial {
   lastPraise: number | null; reunionPending: boolean;
   emotion: Emotion; emotionUntil: number; distanceUntil: number;
   play: Play | null; playUntil: number; nextPlay: number;
+  /** Optional so existing v5 snapshots remain readable. Autonomous play never advances it. */
+  nextRequestedPlay?: number;
 }
 export type SocialCommand = { type: 'tick'; active?: boolean; cursorNear?: boolean } |
   { type: 'touch' } | { type: 'greet' } | { type: 'praise' } | { type: 'orb' } | { type: 'stop' };
@@ -16,12 +18,15 @@ export type SocialExperience = 'praise' | 'reunion' | 'repeated_touch' | 'cursor
 export function initialBabySocial(elapsedMs = 0): BabySocial {
   return { elapsedMs, familiarity: 0, strain: 0, recoveryAt: elapsedMs, lastBond: null,
     lastTouch: null, touches: 0, lastPraise: null, reunionPending: false,
-    emotion: 'quiet', emotionUntil: 0, distanceUntil: 0, play: null, playUntil: 0, nextPlay: elapsedMs };
+    emotion: 'quiet', emotionUntil: 0, distanceUntil: 0, play: null, playUntil: 0,
+    nextPlay: elapsedMs, nextRequestedPlay: elapsedMs };
 }
 export function validateBabySocial(s: BabySocial): void {
   const integer = (n: unknown) => Number.isSafeInteger(n) && Number(n) >= 0;
   if (!s || ![s.elapsedMs, s.familiarity, s.strain, s.recoveryAt, s.touches, s.emotionUntil,
-    s.distanceUntil, s.playUntil, s.nextPlay].every(integer) || s.familiarity > 12 || s.strain > 3 || s.touches > 3 ||
+    s.distanceUntil, s.playUntil, s.nextPlay].every(integer) ||
+    s.nextRequestedPlay !== undefined && !integer(s.nextRequestedPlay) ||
+    s.familiarity > 12 || s.strain > 3 || s.touches > 3 ||
     s.recoveryAt > s.elapsedMs || ![s.lastBond, s.lastTouch, s.lastPraise].every(n => n === null || integer(n) && n <= s.elapsedMs) ||
     typeof s.reunionPending !== 'boolean' || !['quiet', 'joy', 'discomfort', 'curiosity'].includes(s.emotion) || ![null, 'cursor', 'orb'].includes(s.play)) throw new Error('SOCIAL_STATE_INVALID');
 }
@@ -75,15 +80,20 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
     events.push('praise'); s.lastPraise = elapsedMs;
     if (available) { mood('joy'); bond(); }
   }
-  // One short session, then a quiet gap. Long absence does not invent past plays.
-  if (!s.play && available && elapsedMs >= s.nextPlay && (command.type === 'orb' ||
-    command.type === 'tick' && command.active && (command.cursorNear || elapsedMs >= T.playGap))) {
+  // Give an explicit request its own quiet gap. Autonomous play must not consume
+  // the only instant at which the user's request would otherwise be allowed.
+  const requestedOrb = command.type === 'orb' && elapsedMs >= (s.nextRequestedPlay ?? 0);
+  const autonomousPlay = command.type === 'tick' && command.active && elapsedMs >= s.nextPlay &&
+    (command.cursorNear || elapsedMs >= T.playGap);
+  if (available && (requestedOrb || !s.play && autonomousPlay)) {
     s.play = command.type === 'tick' && command.cursorNear ? 'cursor' : 'orb';
     s.playUntil = elapsedMs + T.play; s.nextPlay = elapsedMs + T.playGap;
+    if (requestedOrb) s.nextRequestedPlay = elapsedMs + T.playGap;
     mood('curiosity'); events.push(s.play === 'cursor' ? 'cursor_play' : 'orb_play');
     if (s.play === 'cursor' || command.type === 'orb') bond();
   }
-  if (command.type === 'stop') { s.play = null; s.emotion = 'quiet'; s.emotionUntil = elapsedMs; s.nextPlay = elapsedMs + T.playGap; }
+  if (command.type === 'stop') { s.play = null; s.emotion = 'quiet'; s.emotionUntil = elapsedMs;
+    s.nextPlay = elapsedMs + T.playGap; s.nextRequestedPlay = elapsedMs + T.playGap; }
   validateBabySocial(s);
   return { state: s, events };
 }
