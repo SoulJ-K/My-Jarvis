@@ -4,11 +4,11 @@
 
 - **GitHub:** [SoulJ-K/My-Jarvis](https://github.com/SoulJ-K/My-Jarvis) — 비공개 저장소
 - **최종 작업 폴더:** `/Users/rkfrk/Desktop/My Jarvis`
-- **현재 저장 대상:** 기준 문서와 알 창·저장·기본 반응·돌봄 기록·입력창·5분 타이머·일회성 알람/리마인더, 부화 화면 연결, 아기 먹기·자율 수면·감정·관계·두 가지 놀이·기본 경험 기록. 최종 v0.1 제품은 아직 완성되지 않았다.
+- **현재 저장 대상:** 기준 문서와 알 창·저장·기본 반응·돌봄 기록·입력창·5분 타이머·일회성 알람/리마인더, 부화 화면과 준비 판단 구조, 아기 먹기·자율 수면·감정·관계·두 가지 놀이·낮밤 반응·기본 경험 기록. 부화 시간 정책과 실사용 검증이 남아 있어 최종 v0.1 제품은 아직 완성되지 않았다.
 
 ## 현재 단계
 
-- **알 생활·5분 타이머·일회성 알람/리마인더의 로컬 흐름 구현 / 부화 장면·이름 저장과 아기 먹기·수면·감정·관계·두 놀이·기본 경험의 앱 연결·자동 검사 완료 / 부화 준비 자동 판단과 실사용 검증은 미완료**
+- **알 생활·기본 비서 기능, 부화 장면·이름 저장, 아기 생활·감정·관계·두 놀이·낮밤 반응의 앱 연결과 자동 검사 진행 / 부화 준비 판단 구조 구현·검사, 일반 실행 자동 준비는 정책값 미정으로 비활성 / 실사용 검증 미완료**
 - PRD v0.1, Decision Log v0.1, Character & Growth Design v0.1 정리 완료. 세 문서의 범위와 표현을 교차 검수했다.
 - Technical Design v0.1에 앱 구조, 데이터 모델, 작은 구현 단계와 검증 계획을 정리했다. 검토용 초안이며 최종 기술 구성을 확정한 것은 아니다.
 - 첫 기술 검증은 **Electron + TypeScript로 macOS부터 진행**하기로 정했다(Decision Log D-035). SQLite는 이후 D-039에서 선택했다. React 채택과 Windows 동작은 아직 확정·검증하지 않았다.
@@ -17,7 +17,7 @@
 - 경쟁제품 4종 심층분석 및 통합 경쟁분석 v0.2 완료
 - NekoAI를 AI 연결 없이 사용한 경험과 관계 UX 인사이트 기록
 
-문서 검수, 자동 검사, 사용자 실기기 확인을 구분한다. 저장·첫 클릭 반응은 [PR #4](https://github.com/SoulJ-K/My-Jarvis/pull/4)로 통합했다. 창 검증 [PR #5](https://github.com/SoulJ-K/My-Jarvis/pull/5), 알 돌봄 [PR #6](https://github.com/SoulJ-K/My-Jarvis/pull/6), 입력·타이머 [PR #7](https://github.com/SoulJ-K/My-Jarvis/pull/7)의 순서를 각각 보존했다. 후속 작업도 Mac 앱·알림 [PR #8](https://github.com/SoulJ-K/My-Jarvis/pull/8), 부화 구성요소 [PR #9](https://github.com/SoulJ-K/My-Jarvis/pull/9), 일회성 알람·리마인더 [PR #10](https://github.com/SoulJ-K/My-Jarvis/pull/10), 실제 앱의 부화 화면 연결 [PR #12](https://github.com/SoulJ-K/My-Jarvis/pull/12), 아기 기본 생활 [PR #13](https://github.com/SoulJ-K/My-Jarvis/pull/13), 감정·관계·두 놀이 [PR #14](https://github.com/SoulJ-K/My-Jarvis/pull/14)로 나눠 기록했다. 각 PR의 실제 병합 상태는 GitHub 이력을 따른다. 시스템 알림의 실제 표시, 부화 준비 자동 판단, 사용자 직접 조작과 며칠 생활 검증은 아직 완료되지 않았다.
+문서 검수, 자동 검사, 사용자 실기기 확인을 구분한다. 저장·첫 클릭 반응은 [PR #4](https://github.com/SoulJ-K/My-Jarvis/pull/4)로 통합했다. 창 검증 [PR #5](https://github.com/SoulJ-K/My-Jarvis/pull/5), 알 돌봄 [PR #6](https://github.com/SoulJ-K/My-Jarvis/pull/6), 입력·타이머 [PR #7](https://github.com/SoulJ-K/My-Jarvis/pull/7)의 순서를 각각 보존했다. 후속 작업도 Mac 앱·알림 [PR #8](https://github.com/SoulJ-K/My-Jarvis/pull/8), 부화 구성요소 [PR #9](https://github.com/SoulJ-K/My-Jarvis/pull/9), 일회성 알람·리마인더 [PR #10](https://github.com/SoulJ-K/My-Jarvis/pull/10), 실제 앱의 부화 화면 연결 [PR #12](https://github.com/SoulJ-K/My-Jarvis/pull/12), 아기 기본 생활 [PR #13](https://github.com/SoulJ-K/My-Jarvis/pull/13), 감정·관계·두 놀이 [PR #14](https://github.com/SoulJ-K/My-Jarvis/pull/14), 아기 낮밤·복귀 반응 [PR #16](https://github.com/SoulJ-K/My-Jarvis/pull/16), 부화 준비 판단 구조 [PR #17](https://github.com/SoulJ-K/My-Jarvis/pull/17), 오프라인·재시작 통합 검사 [PR #18](https://github.com/SoulJ-K/My-Jarvis/pull/18)로 나눠 기록했다. 각 PR의 실제 병합 상태는 GitHub 이력을 따른다. 시스템 알림의 실제 표시, 일반 실행의 자동 부화 준비, 사용자 직접 조작과 며칠 생활 검증은 아직 완료되지 않았다.
 
 ## 담당 2: 작은 알 생활 확장 — 개별 검토용 브랜치
 
@@ -163,6 +163,10 @@ npm start
 **미검증:** 메뉴 종료, 다른 앱·좌표 전반의 클릭 통과·키보드 입력 유지, 화면 가장자리·다중 모니터·배율·장시간 사용, 설치용 `.app` 포장, Windows. `panel`은 macOS의 여러 데스크톱 공간에 나타나는 특성이 있으므로 공간 전환·전체 화면에서의 표시도 확인해야 한다. 화면 조작 도구의 권한이 없어 Codex가 직접 운영체제 마우스로 검증하지는 못했다. 사용자 확인과 자동 검사 결과를 구분해 기록한다.
 
 ## 다음 작업
+
+**최신 검증 — 2026-09-26:** [PR #16](https://github.com/SoulJ-K/My-Jarvis/pull/16)에서 아기의 기기 현지 시각 기준 낮·밤 표현과 짧은 복귀 반응을 잠정값으로 연결했다. [PR #17](https://github.com/SoulJ-K/My-Jarvis/pull/17)에서는 누적 시간·실제 돌봄 기록을 이용한 부화 준비 판단을 만들고, 첫 장면은 메뉴 선택으로만 시작하도록 분리했다. **기본 대기 시간·돌봄 단축량·상한·간격이 미정이라 일반 실행의 자동 준비는 아직 꺼져 있다.** [PR #18](https://github.com/SoulJ-K/My-Jarvis/pull/18)의 임시 자료·숨긴 앱 검사에서는 오프라인 상태의 알 돌봄→테스트용 부화→아기 경험과 세 종류 알림의 재시작 연속성을 확인했다. 통합 코드에서 `npm test` 전체 목록이 단독 실행 시 통과했지만, 앞선 한 번의 아기 화면 검사 종료 지연 원인은 확정하지 못했다. 사용자 직접 화면 조작, 실제 알림 표시, 물리 절전·잠금, 며칠 사용은 미검증이다.
+
+**이어 할 일:** 사용자와 부화 시간·돌봄 영향 기준을 정한 뒤 일반 실행의 자동 준비를 켜고 같은 통합 검사를 다시 실행한다. 사용자가 실제 기기 확인이 가능할 때 보류한 화면·알림·장기간 생활 검증을 제시한다. 아직 v0.1 완료로 표시하지 않는다.
 
 세 작업의 순서는 각 PR의 이유·코드·검증 결과로 보존한다. 임시 통합 브랜치에서는 실제 페이지 클릭으로 돌봄 사건 하나를 남기고 5분 타이머를 저장한 뒤 앱을 다시 실행하여 **같은 알·돌봄 사건·예약**을 확인하고 타이머를 취소했다. `npm run typecheck`와 `npm test`의 규칙·저장·재시작 검사 43개 및 Electron 화면 검사 묶음이 통과했다. 타이머 단독 검사가 펫 DB 파일의 바이트 불변을 가정했으나, 통합 앱에서는 알의 경과 시간을 시작 때 기록하므로 식별 정보와 돌봄 사건의 불변을 확인하도록 고쳤다. 이 조정은 결합 후에만 드러난 검사 전제의 차이를 기록한 것이다. D-044 참조.
 
