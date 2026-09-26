@@ -54,7 +54,7 @@ test('corrupt and existing empty files are preserved, never reinitialized', t =>
 });
 
 test('unsupported versions, missing identity, and invalid state fail without rewriting', t => {
-  for (const sql of ['PRAGMA user_version = 2', 'PRAGMA user_version = 0',
+  for (const sql of ['PRAGMA user_version = 3', 'PRAGMA user_version = 0',
     'DELETE FROM pet', "UPDATE pet SET created_at = 'invalid'", "UPDATE pet SET pet_id = 'invalid'",
     'PRAGMA application_id = 0']) {
     const directory = workspace(t);

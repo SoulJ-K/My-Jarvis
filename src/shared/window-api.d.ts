@@ -7,6 +7,8 @@ interface Window {
     snapshot: () => Promise<import('./pet').EggSnapshot>;
     hover: (interactive: boolean) => void;
     beginDrag: () => void;
+    onStrokeReady: (listener: () => void) => () => void;
+    onSaveFailed: (listener: () => void) => () => void;
     moveDrag: () => void;
     endDrag: () => Promise<boolean>;
     cancelDrag: () => void;

@@ -7,7 +7,7 @@ import type { EggSnapshot } from '../shared/pet';
 const FORMAT_VERSION = 1;
 const APPLICATION_ID = 0x4a505431; // JPT1
 export class PetStorageError extends Error {
-  constructor(readonly code: 'CREATE_FAILED' | 'INVALID_STORE' | 'UNSUPPORTED_FORMAT' | 'READ_FAILED') {
+  constructor(readonly code: 'CREATE_FAILED' | 'INVALID_STORE' | 'UNSUPPORTED_FORMAT' | 'READ_FAILED' | 'WRITE_FAILED') {
     super(code);
     this.name = 'PetStorageError';
   }
@@ -24,7 +24,7 @@ function readEgg(db: DatabaseSync): EggSnapshot {
   if (db.prepare('PRAGMA application_id').get()?.application_id !== APPLICATION_ID) {
     throw new PetStorageError('INVALID_STORE');
   }
-  if (db.prepare('PRAGMA user_version').get()?.user_version !== FORMAT_VERSION) {
+  if (![1, 2].includes(Number(db.prepare('PRAGMA user_version').get()?.user_version))) {
     throw new PetStorageError('UNSUPPORTED_FORMAT');
   }
   const rows = db.prepare('SELECT singleton, pet_id, created_at, stage FROM pet LIMIT 2').all();
