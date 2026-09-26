@@ -59,3 +59,11 @@ test('injected readiness policy: startup, resume and real care prepare without o
     assert.deepEqual(launch(directory, 'inspect'), ready);
   }
 });
+test('activation and second launch only show a ready egg; the tray starts hatching and activation resumes a witnessed scene', t => {
+  const directory = workspace(t);
+  const seed = new LifecycleRepository(directory, options);
+  seed.apply(0, { type: 'prepare' }); seed.close();
+  const result = launch(directory, 'activation');
+  assert.equal(result.completed, 'prelude');
+  assert.equal(result.stage, 'egg');
+});

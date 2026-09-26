@@ -33,10 +33,16 @@ export function startJarvis(options: {
   let hatching = false;
   let quitting = false;
   let syncHatch = async () => {};
+  let hatchHasStarted = () => false;
+  const openHatch = () => {
+    if (!show || quitting) return;
+    void syncHatch().then(() => { if (hatch?.open()) win?.hide(); })
+      .catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
+  };
   const showPet = () => {
     if (!show || quitting) return;
-    if (hatching) void syncHatch().then(() => { if (hatch?.open()) win?.hide(); })
-      .catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
+    // Activation can resume a witnessed sequence, but is never its first start.
+    if (hatching && hatchHasStarted()) openHatch();
     else win?.showInactive();
   };
   if (!app.requestSingleInstanceLock()) {
@@ -63,6 +69,7 @@ export function startJarvis(options: {
       namePolicy: { trim: true, maxCodePoints: 20 },
     });
     let state = lifecycle.read();
+    hatchHasStarted = () => lifecycle.read().completed !== null;
     const eggNow = options.eggNow ?? Date.now;
     hatching = state.ready && state.name === null;
     const baby = new BabyLifeRepository(app.getPath('userData'));
@@ -76,7 +83,7 @@ export function startJarvis(options: {
         }
         hatching = state.ready && state.name === null;
         // Readiness never opens a scene or records a witness. Only the user's
-        // tray/activation request opens the existing explicitly paced sequence.
+        // tray request starts the existing explicitly paced sequence.
         if (!quitting) {
           void syncHatch().catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
           refreshTray();
@@ -169,7 +176,7 @@ export function startJarvis(options: {
         tray!.setToolTip(`Jarvis Pet · ${label}`);
         tray!.setContextMenu(Menu.buildFromTemplate([
           { label: `Jarvis Pet · ${label}`, enabled: false },
-          { label: hatching ? (lifecycle.read().completed === null ? '부화 함께 보기' : '첫 만남 이어보기') : '펫을 처음 위치로', click: reset },
+          { label: hatching ? (lifecycle.read().completed === null ? '부화 함께 보기' : '첫 만남 이어보기') : '펫을 처음 위치로', click: hatching ? openHatch : reset },
           { label: '입력 / 타이머', enabled: Boolean(panels), click: () => panels?.open() },
           { type: 'separator' },
           { label: 'Jarvis Pet 종료', click: () => app.quit() },
