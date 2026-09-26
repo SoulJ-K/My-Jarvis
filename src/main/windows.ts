@@ -8,9 +8,17 @@ const WIDTH = 180;
 const HEIGHT = 200;
 const DRAG_THRESHOLD = 6;
 
+function clampPosition(point: Electron.Point, area: Electron.Rectangle) {
+  // Electron cursor, workArea and window positions all use logical pixels (DIP).
+  return {
+    x: Math.round(Math.max(area.x, Math.min(area.x + area.width - WIDTH, point.x))),
+    y: Math.round(Math.max(area.y, Math.min(area.y + area.height - HEIGHT, point.y))),
+  };
+}
+
 export function initialPosition() {
   const area = screen.getPrimaryDisplay().workArea;
-  return { x: area.x + area.width - WIDTH - 48, y: area.y + area.height - HEIGHT - 32 };
+  return clampPosition({ x: area.x + area.width - WIDTH - 48, y: area.y + area.height - HEIGHT - 32 }, area);
 }
 
 export async function createPetWindow(pet: EggSnapshot, show = true) {
@@ -49,6 +57,24 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
     ignoring = !interactive;
     win.setIgnoreMouseEvents(ignoring, { forward: true });
   };
+  const cancelGesture = () => {
+    drag = undefined;
+    setInteractive(false);
+  };
+  // A new document has no pointer capture; do not leave the old gesture active.
+  win.webContents.on('did-start-loading', cancelGesture);
+  const recoverPosition = () => {
+    if (win.isDestroyed()) return;
+    if (drag) cancelGesture();
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const position = clampPosition(bounds, area);
+    if (position.x !== bounds.x || position.y !== bounds.y) {
+      win.setPosition(position.x, position.y, false);
+    }
+  };
+  screen.on('display-removed', recoverPosition);
+  screen.on('display-metrics-changed', recoverPosition);
   const validSender = (event: IpcMainEvent | IpcMainInvokeEvent) =>
     !win.isDestroyed() && event.sender === win.webContents &&
     event.senderFrame === win.webContents.mainFrame &&
@@ -72,9 +98,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     drag.moved = true;
     const area = screen.getDisplayNearestPoint(cursor).workArea;
-    const x = Math.round(Math.max(area.x, Math.min(area.x + area.width - WIDTH, drag.origin.x + dx)));
-    const y = Math.round(Math.max(area.y, Math.min(area.y + area.height - HEIGHT, drag.origin.y + dy)));
-    win.setPosition(x, y, false);
+    const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area);
+    win.setPosition(position.x, position.y, false);
   };
   const end = (event: IpcMainInvokeEvent) => {
     if (!validSender(event)) return true;
@@ -86,8 +111,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
   };
   const cancel = (event: IpcMainEvent) => {
     if (!validSender(event)) return;
-    drag = undefined;
-    setInteractive(false);
+    cancelGesture();
   };
   ipcMain.on('egg:hover', hover);
   ipcMain.on('egg:drag-start', start);
@@ -104,6 +128,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
   });
   win.on('closed', () => {
     brain.dispose();
+    screen.removeListener('display-removed', recoverPosition);
+    screen.removeListener('display-metrics-changed', recoverPosition);
     ipcMain.removeHandler('egg:snapshot');
     ipcMain.removeListener('egg:hover', hover);
     ipcMain.removeListener('egg:drag-start', start);
