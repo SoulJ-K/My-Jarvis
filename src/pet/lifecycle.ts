@@ -1,3 +1,5 @@
+import type { EggCareEvent, EggCareKind, EggLife } from './egg-life';
+
 /** No clock, AI, renderer or storage dependency. A checkpoint means a witnessed,
  * completed scene; merely starting a scene must never advance this record. */
 export const hatchScenes = ['prelude', 'crack', 'orb', 'shell', 'baby', 'contact'] as const;
@@ -12,6 +14,43 @@ export interface Lifecycle {
   readonly revision: number;
 }
 export interface NamePolicy { readonly trim: boolean; readonly maxCodePoints: number }
+/** Product choices are explicit; there is no inferred production duration. */
+export interface HatchReadinessPolicy {
+  readonly baseDurationMs: number;
+  readonly careReductionMs: Readonly<Record<EggCareKind, number>>;
+  readonly maxCareReductionMs: number;
+  /** Minimum elapsed gap between care records eligible for a reduction. */
+  readonly careIntervalMs: number;
+}
+
+export function hatchReadiness(life: EggLife, care: readonly EggCareEvent[], policy: HatchReadinessPolicy) {
+  const nonnegative = (value: number) => Number.isSafeInteger(value) && value >= 0;
+  if (!nonnegative(policy.baseDurationMs) || policy.baseDurationMs === 0 ||
+      !nonnegative(policy.maxCareReductionMs) || policy.maxCareReductionMs >= policy.baseDurationMs ||
+      !nonnegative(policy.careIntervalMs) || policy.careIntervalMs === 0 ||
+      !nonnegative(policy.careReductionMs?.touch) || !nonnegative(policy.careReductionMs?.stroke)) {
+    throw new Error('INVALID_HATCH_POLICY');
+  }
+  if (!nonnegative(life.elapsedMs) || !nonnegative(life.observedAtMs)) throw new Error('INVALID_HATCH_EVIDENCE');
+  let reductionMs = 0;
+  let previousElapsedMs = 0;
+  let lastEligibleElapsedMs: number | undefined;
+  for (const event of care) {
+    if (!['touch', 'stroke'].includes(event.kind) || !nonnegative(event.occurredAtMs) ||
+        !nonnegative(event.elapsedMs) || event.elapsedMs < previousElapsedMs ||
+        event.elapsedMs > life.elapsedMs || event.occurredAtMs > life.observedAtMs) {
+      throw new Error('INVALID_HATCH_EVIDENCE');
+    }
+    previousElapsedMs = event.elapsedMs;
+    if (policy.careReductionMs[event.kind] === 0 ||
+        (lastEligibleElapsedMs !== undefined && event.elapsedMs - lastEligibleElapsedMs < policy.careIntervalMs)) continue;
+    lastEligibleElapsedMs = event.elapsedMs;
+    // Add only the remaining allowance, avoiding overflow even for large policies.
+    reductionMs += Math.min(policy.maxCareReductionMs - reductionMs, policy.careReductionMs[event.kind]);
+  }
+  const requiredElapsedMs = policy.baseDurationMs - reductionMs;
+  return { ready: life.elapsedMs >= requiredElapsedMs, reductionMs, requiredElapsedMs };
+}
 export type LifecycleCommand =
   | { type: 'prepare' }
   | { type: 'witness'; scene: HatchScene }

@@ -49,3 +49,21 @@ test('production IPC, pause epochs, scene/name write failures and committed baby
   assert.equal(result.name, '별');
   assert.deepEqual(launch(directory, 'inspect'), result);
 });
+test('injected readiness policy: startup, resume and real care prepare without opening or witnessing; restart retains it', t => {
+  for (const mode of ['ready-startup', 'ready-live', 'ready-care']) {
+    const directory = workspace(t);
+    const ready = launch(directory, mode);
+    assert.equal(ready.ready, true);
+    assert.equal(ready.completed, null);
+    assert.equal(ready.stage, 'egg');
+    assert.deepEqual(launch(directory, 'inspect'), ready);
+  }
+});
+test('activation and second launch only show a ready egg; the tray starts hatching and activation resumes a witnessed scene', t => {
+  const directory = workspace(t);
+  const seed = new LifecycleRepository(directory, options);
+  seed.apply(0, { type: 'prepare' }); seed.close();
+  const result = launch(directory, 'activation');
+  assert.equal(result.completed, 'prelude');
+  assert.equal(result.stage, 'egg');
+});

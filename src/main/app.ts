@@ -11,12 +11,16 @@ import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 import { LifecycleRepository } from '../storage/lifecycle-repository';
 import { createHatchWindow } from './hatch-window';
+import type { HatchReadinessPolicy } from '../pet/lifecycle';
 
 // Test entry points call this same startup with isolated userData and hidden windows.
 // No test settings or storage paths are exposed to the renderer.
 export function startJarvis(options: {
   show?: boolean;
   notifySchedule?: NotifySchedule;
+  /** Main-process injection for isolated checks; product policy remains unset. */
+  hatchPolicy?: HatchReadinessPolicy;
+  eggNow?: () => number;
   onReady?: (win: BrowserWindow) => Promise<void>;
   onFailure?: (code: string) => void;
 } = {}): void {
@@ -27,9 +31,18 @@ export function startJarvis(options: {
   let cleanupTimers: (() => void) | undefined;
   let hatch: Awaited<ReturnType<typeof createHatchWindow>> | undefined;
   let hatching = false;
+  let quitting = false;
+  let syncHatch = async () => {};
+  let hatchHasStarted = () => false;
+  const openHatch = () => {
+    if (!show || quitting) return;
+    void syncHatch().then(() => { if (hatch?.open()) win?.hide(); })
+      .catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
+  };
   const showPet = () => {
-    if (!show) return;
-    if (hatching) hatch?.open();
+    if (!show || quitting) return;
+    // Activation can resume a witnessed sequence, but is never its first start.
+    if (hatching && hatchHasStarted()) openHatch();
     else win?.showInactive();
   };
   if (!app.requestSingleInstanceLock()) {
@@ -45,36 +58,59 @@ export function startJarvis(options: {
   app.on('second-instance', reset);
   app.on('activate', showPet);
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => { cleanupTimers?.(); cleanupTimers = undefined; hatch?.dispose(); tray?.destroy(); });
+  app.on('before-quit', () => { quitting = true; cleanupTimers?.(); cleanupTimers = undefined; hatch?.dispose(); tray?.destroy(); });
   app.whenReady().then(async () => {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
-    // No development trigger is supplied: ordinary launches cannot mark an egg ready.
+    // No test-only prepare command is enabled. A real policy is required below.
     const lifecycle = new LifecycleRepository(app.getPath('userData'), {
       // User-selected first-name policy: trim outer whitespace, 1–20 code points.
       namePolicy: { trim: true, maxCodePoints: 20 },
     });
     let state = lifecycle.read();
+    hatchHasStarted = () => lifecycle.read().completed !== null;
+    const eggNow = options.eggNow ?? Date.now;
     hatching = state.ready && state.name === null;
     const baby = new BabyLifeRepository(app.getPath('userData'));
-    const life = openEggLife(app.getPath('userData'));
+    const life = openEggLife(app.getPath('userData'), eggNow);
+    let refreshTray = () => {};
     const checkpoint = () => {
-      if (state.ready) return;
-      try { life.checkpoint(); } catch { console.error('알 생활 저장 실패: WRITE_FAILED'); }
+      try {
+        if (!state.ready) {
+          if (options.hatchPolicy) state = lifecycle.prepareIfReady(options.hatchPolicy, eggNow());
+          else life.checkpoint();
+        }
+        hatching = state.ready && state.name === null;
+        // Readiness never opens a scene or records a witness. Only the user's
+        // tray request starts the existing explicitly paced sequence.
+        if (!quitting) {
+          void syncHatch().catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
+          refreshTray();
+        }
+      } catch { console.error('알 생활 저장 실패: WRITE_FAILED'); }
     };
-    if (!state.ready) life.checkpoint();
+    checkpoint();
     const timer = setInterval(checkpoint, 60_000);
-    app.once('will-quit', () => { clearInterval(timer); checkpoint(); life.close(); lifecycle.close(); baby.close(); });
+    powerMonitor.on('resume', checkpoint);
+    app.once('will-quit', () => {
+      clearInterval(timer); powerMonitor.removeListener('resume', checkpoint);
+      syncHatch = async () => {}; refreshTray = () => {};
+      checkpoint(); life.close(); lifecycle.close(); baby.close();
+    });
     let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
-    win = await createPetWindow(pet, show && !hatching, kind => {
-      if (state.ready) throw new Error('EGG_CARE_ENDED');
+    win = await createPetWindow(pet, show && (!hatching || state.completed === null), kind => {
+      // Waiting for an explicit start is still egg life; readiness is not a care lock.
+      if (lifecycle.read().completed !== null) throw new Error('EGG_CARE_ENDED');
       life.care(kind);
+      checkpoint();
     }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby, () => panels?.open());
     win.on('closed', () => app.quit());
-    let refreshTray = () => {};
-    if (hatching) {
-      hatch = await createHatchWindow(lifecycle, show, saved => {
+    let creatingHatch: Promise<void> | undefined;
+    syncHatch = () => {
+      if (quitting || !hatching || hatch) return Promise.resolve();
+      if (creatingHatch) return creatingHatch;
+      creatingHatch = createHatchWindow(lifecycle, show, saved => {
         state = saved;
         hatching = false;
         // The idle pet must load its committed baby snapshot before becoming visible.
@@ -82,9 +118,13 @@ export function startJarvis(options: {
         win!.webContents.once('did-finish-load', showPet);
         win!.reload();
         refreshTray();
-      });
-      hatch.open();
-    }
+      }).then(created => {
+        if (quitting) created.dispose();
+        else hatch = created;
+      }).finally(() => { creatingHatch = undefined; });
+      return creatingHatch;
+    };
+    await syncHatch();
     const notifications = timerNotifications(undefined, show ? {} : {
       backend: { isSupported: () => false, create: () => { throw new Error('HIDDEN_NOTIFICATION_DISABLED'); } },
     });
@@ -131,12 +171,12 @@ export function startJarvis(options: {
     if (show) {
       tray = new Tray(nativeImage.createEmpty());
       refreshTray = () => {
-        const label = state.name ?? (hatching ? '첫 만남' : '알');
+        const label = state.name ?? (hatching ? '부화 준비' : '알');
         tray!.setTitle(label);
         tray!.setToolTip(`Jarvis Pet · ${label}`);
         tray!.setContextMenu(Menu.buildFromTemplate([
           { label: `Jarvis Pet · ${label}`, enabled: false },
-          { label: hatching ? '첫 만남 이어보기' : '펫을 처음 위치로', click: reset },
+          { label: hatching ? (lifecycle.read().completed === null ? '부화 함께 보기' : '첫 만남 이어보기') : '펫을 처음 위치로', click: hatching ? openHatch : reset },
           { label: '입력 / 타이머', enabled: Boolean(panels), click: () => panels?.open() },
           { type: 'separator' },
           { label: 'Jarvis Pet 종료', click: () => app.quit() },
