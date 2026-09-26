@@ -1,5 +1,9 @@
-import { app, dialog, Menu, nativeImage, Tray, type BrowserWindow } from 'electron';
+import { app, dialog, Menu, nativeImage, powerMonitor, Tray, type BrowserWindow } from 'electron';
 import { createPetWindow, initialPosition } from './windows';
+import { TimerRepository } from '../storage/timer-repository';
+import { TimerService } from '../assistant/timer';
+import { timerNotifications } from './notifications';
+import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 
 // Test entry points call this same startup with isolated userData and hidden windows.
@@ -13,6 +17,7 @@ export function startJarvis(options: {
   app.setName('Jarvis Pet');
   let tray: Tray | undefined;
   let win: BrowserWindow | undefined;
+  let cleanupTimers: (() => void) | undefined;
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -26,13 +31,35 @@ export function startJarvis(options: {
   app.on('second-instance', reset);
   app.on('activate', () => { if (show) win?.showInactive(); });
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => tray?.destroy());
+  app.on('before-quit', () => { cleanupTimers?.(); cleanupTimers = undefined; tray?.destroy(); });
   app.whenReady().then(async () => {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
     win = await createPetWindow(pet, show);
     win.on('closed', () => app.quit());
+    const notifications = timerNotifications();
+    let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
+    let service: TimerService | undefined;
+    try {
+      service = new TimerService(new TimerRepository(app.getPath('userData')),
+        { wall: () => Date.now(), monotonic: () => performance.now() }, notifications.notify,
+        () => panels?.refresh());
+      panels = await createPromptWindows(service, show);
+      const timerService = service;
+      const tick = () => { try { timerService.tick(); } catch { console.error('타이머 저장 오류: TIMER_TICK_FAILED'); } };
+      const interval = setInterval(tick, 500);
+      const resume = () => { try { timerService.resume(); } catch { console.error('타이머 복원 오류: TIMER_RESUME_FAILED'); } };
+      const suspend = () => timerService.suspend();
+      powerMonitor.on('suspend', suspend);
+      powerMonitor.on('resume', resume);
+      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); notifications.dispose(); panels?.dispose(); timerService.dispose(); };
+      panels.refresh();
+    } catch {
+      notifications.dispose(); service?.dispose();
+      console.error('타이머를 열지 못했습니다: TIMER_STORAGE_FAILED');
+      if (show) dialog.showErrorBox('타이머를 열지 못했습니다', '타이머 저장소를 읽지 못해 입력 기능을 멈췄습니다. 기존 파일과 알은 보존합니다.');
+    }
     if (show) {
       tray = new Tray(nativeImage.createEmpty());
       tray.setTitle('알');
@@ -40,6 +67,7 @@ export function startJarvis(options: {
       tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Jarvis Pet · 알', enabled: false },
         { label: '알을 처음 위치로', click: reset },
+        { label: '입력 / 타이머', enabled: Boolean(panels), click: () => panels?.open() },
         { type: 'separator' },
         { label: 'Jarvis Pet 종료', click: () => app.quit() },
       ]));

@@ -1,0 +1,21 @@
+import { app, BrowserWindow } from 'electron';
+const [directory, mode] = process.argv.slice(2);
+if (!directory || !['register','inspect','cancel','ack'].includes(mode)) throw new Error('Invalid arguments');
+app.setPath('userData',directory);
+const timeout = setTimeout(() => app.exit(2),15000);
+const lifecycle = require('../../src/main/app') as typeof import('../../src/main/app');
+const start = lifecycle.startJarvis;
+lifecycle.startJarvis = () => start({ show:false, onReady: async () => {
+  const panel = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('/prompt.html'));
+  if (!panel) throw new Error('Missing input panel');
+  const before = await panel.webContents.executeJavaScript('window.timerPanel.read()');
+  let reply;
+  if (mode === 'register') reply = await panel.webContents.executeJavaScript("window.timerPanel.submit('restart-request','5분 타이머')");
+  if (mode === 'cancel') reply = await panel.webContents.executeJavaScript("window.timerPanel.cancel('restart-request')");
+  if (mode === 'ack') await panel.webContents.executeJavaScript("window.timerPanel.acknowledge('restart-request')");
+  const after = await panel.webContents.executeJavaScript('window.timerPanel.read()');
+  const rendered = await panel.webContents.executeJavaScript('new Promise(resolve => setTimeout(() => resolve(document.querySelector("#timers").textContent), 50))');
+  console.log('TIMER_READY:'+JSON.stringify({ before,after,reply,rendered }));
+  clearTimeout(timeout); app.quit();
+}});
+require('../../src/main/index');
