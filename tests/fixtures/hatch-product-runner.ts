@@ -1,18 +1,52 @@
 import assert from 'node:assert/strict';
-import { app, BrowserWindow, ipcMain, powerMonitor, screen, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, powerMonitor, screen, type IpcMainInvokeEvent, type Menu } from 'electron';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import { petDatabasePath } from '../../src/storage/pet-repository';
+import { loadOrCreateEgg, petDatabasePath } from '../../src/storage/pet-repository';
+import { openEggLife } from '../../src/storage/egg-life-repository';
 import { hatchScenes, nextHatchStep, type Lifecycle } from '../../src/pet/lifecycle';
 import type { HatchView } from '../../src/shared/hatch';
 
-const lifecycle = require('../../src/main/app') as typeof import('../../src/main/app');
-const startJarvis = lifecycle.startJarvis;
 const [directory, mode] = process.argv.slice(2);
-if (!directory || !['inspect', 'step', 'exercise'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
+if (!directory || !['inspect', 'step', 'exercise', 'ready-live', 'ready-care', 'ready-startup', 'activation'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
 app.setPath('userData', directory);
+let trayMenu: Menu | undefined;
+let electronForApp: typeof import('electron') | undefined;
+if (mode === 'activation') {
+  // Exercise the show=true product routing and actual menu callbacks, replacing
+  // only native presentation so no OS tray, foreground window or focus changes.
+  electronForApp = { ...require('electron'), Tray: class {
+    setTitle() {} setToolTip() {} destroy() {}
+    setContextMenu(menu: Menu) { trayMenu = menu; }
+  } };
+  const visible = new Set<number>();
+  BrowserWindow.prototype.show = function () { visible.add(this.id); this.emit('show'); };
+  BrowserWindow.prototype.showInactive = function () { visible.add(this.id); this.emit('show'); };
+  BrowserWindow.prototype.hide = function () { visible.delete(this.id); this.emit('hide'); };
+  BrowserWindow.prototype.isVisible = function () { return visible.has(this.id); };
+  BrowserWindow.prototype.focus = function () {};
+}
+// Electron exports cannot be redefined. Substitute only app.ts's imported tray
+// constructor while loading the test target; restore normal module loading at once.
+const modules = require('node:module');
+const originalLoad = modules._load;
+const appModule = require.resolve('../../src/main/app');
+modules._load = function (request: string, parent: { filename: string }, ...args: unknown[]) {
+  if (electronForApp && request === 'electron' && parent.filename === appModule) return electronForApp;
+  return originalLoad.call(this, request, parent, ...args);
+};
+let lifecycle: typeof import('../../src/main/app');
+try { lifecycle = require('../../src/main/app'); } finally { modules._load = originalLoad; }
+const startJarvis = lifecycle.startJarvis;
+const readinessMode = mode.startsWith('ready-');
+let eggNow = 0;
+if (readinessMode) {
+  eggNow = Date.parse(loadOrCreateEgg(directory).createdAt);
+  openEggLife(directory, () => eggNow).close();
+  if (mode === 'ready-startup') eggNow += 1000;
+}
 const timeout = setTimeout(() => app.exit(2), 25000);
 const register = ipcMain.handle.bind(ipcMain);
 const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
@@ -28,10 +62,73 @@ async function until(check: () => Promise<boolean>) {
   for (let i = 0; i < 150; i++) { if (await check()) return; await pause(); }
   throw new Error('UI_DID_NOT_SETTLE');
 }
-lifecycle.startJarvis = () => startJarvis({ show: false, onReady: async pet => {
+lifecycle.startJarvis = () => startJarvis({ show: mode === 'activation',
+  ...(mode === 'activation' ? { notifySchedule: () => ({ status: 'unsupported' as const }) } : {}),
+  ...(readinessMode ? { hatchPolicy: { baseDurationMs: 1000, careReductionMs: { touch: 100, stroke: 200 }, maxCareReductionMs: 300, careIntervalMs: 100 }, eggNow: () => eggNow } : {}),
+  onReady: async pet => {
   const db = new DatabaseSync(petDatabasePath(directory));
   const state = (): Lifecycle => JSON.parse(String(db.prepare('SELECT snapshot FROM lifecycle').get()?.snapshot));
   const original = state();
+  if (mode === 'activation') {
+    const waiting = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남')!;
+    assert.equal(original.ready, true); assert.equal(original.completed, null);
+    assert.equal(waiting.isVisible(), false); assert.equal(pet.isVisible(), true);
+    for (const event of ['activate', 'second-instance']) {
+      app.emit(event); await pause();
+      assert.equal(waiting.isVisible(), false); assert.equal(pet.isVisible(), true);
+      assert.deepEqual(state(), original);
+    }
+    assert.equal(trayMenu?.items[1].label, '부화 함께 보기');
+    const menuItem = trayMenu!.items[1];
+    (menuItem.click as () => void)();
+    await until(async () => waiting.isVisible());
+    assert.equal(pet.isVisible(), false); assert.deepEqual(state(), original);
+    const read = () => waiting.webContents.executeJavaScript('window.hatch.read()');
+    const view: HatchView = await read();
+    await waiting.webContents.executeJavaScript(`window.hatch.witness(${view.state.revision}, ${view.epoch}, 'prelude')`);
+    const started = state(); assert.equal(started.completed, 'prelude');
+    for (const event of ['activate', 'second-instance']) {
+      waiting.hide(); app.emit(event);
+      await until(async () => waiting.isVisible());
+      assert.deepEqual(state(), started);
+    }
+    console.log(`HATCH_PRODUCT:${JSON.stringify(state())}`);
+    db.close(); clearTimeout(timeout); app.quit(); return;
+  }
+  if (readinessMode) {
+    if (mode !== 'ready-startup') {
+      assert.equal(original.ready, false);
+      assert.equal(BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Jarvis Pet · 첫 만남'), false);
+      eggNow += mode === 'ready-care' ? 900 : 1000;
+      if (mode === 'ready-care') {
+        await pet.webContents.executeJavaScript('window.petWindow.beginDrag(); window.petWindow.endDrag()');
+        assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 1);
+      } else {
+        powerMonitor.emit('lock-screen'); powerMonitor.emit('suspend');
+        // Resume advances elapsed time even while the lock remains in effect.
+        powerMonitor.emit('resume');
+      }
+    }
+    await until(async () => state().ready && BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Jarvis Pet · 첫 만남' && !w.webContents.isLoading()));
+    const prepared = state();
+    assert.equal(prepared.completed, null); assert.equal(prepared.stage, 'egg');
+    assert.equal(prepared.orbId, null); assert.equal(prepared.name, null); assert.equal(prepared.revision, 1);
+    const waiting = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남')!;
+    assert.equal(waiting.isVisible(), false);
+    assert.equal((await waiting.webContents.executeJavaScript('window.hatch.read()')).available, false);
+    powerMonitor.emit('unlock-screen'); powerMonitor.emit('resume');
+    await pause();
+    assert.deepEqual(state(), prepared);
+    assert.equal(waiting.isVisible(), false);
+    // Waiting for the user must not turn harmless egg care into a save error.
+    await new Promise(resolve => setTimeout(resolve, 750));
+    const count = Number(db.prepare('SELECT count(*) n FROM egg_care').get()?.n);
+    await pet.webContents.executeJavaScript('window.petWindow.beginDrag(); window.petWindow.endDrag()');
+    assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, count + 1);
+    assert.deepEqual(state(), prepared);
+    console.log(`HATCH_PRODUCT:${JSON.stringify(state())}`);
+    db.close(); clearTimeout(timeout); app.quit(); return;
+  }
   const win = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남');
   if (!win) {
     assert.ok(!original.ready || original.name !== null);

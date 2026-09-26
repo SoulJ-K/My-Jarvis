@@ -82,8 +82,9 @@ export async function createHatchWindow(store: LifecycleRepository, show: boolea
   };
   try { await win.loadFile(page); } catch (error) { dispose(); throw error; }
   return { win, dispose, open() {
-    if (!show || disposed || store.read().name !== null) return;
+    if (!show || disposed || locked || suspended || store.read().name !== null) return false;
     if (win.webContents.isCrashed()) win.reload();
     win.show(); win.focus();
+    return true;
   } };
 }

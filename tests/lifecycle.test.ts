@@ -5,13 +5,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { spawnSync } from 'node:child_process';
-import { hatchScenes, initialLifecycle, advanceLifecycle, nextHatchStep, normalizePetName } from '../src/pet/lifecycle';
+import { hatchReadiness, hatchScenes, initialLifecycle, advanceLifecycle, nextHatchStep, normalizePetName } from '../src/pet/lifecycle';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { openEggLife } from '../src/storage/egg-life-repository';
 
 // User-selected first-name policy; preparation remains a test-only trigger.
 const options = { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true };
+// Deliberately tiny test policy. These values are not product defaults.
+const readinessPolicy = { baseDurationMs: 1000, careReductionMs: { touch: 50, stroke: 100 }, maxCareReductionMs: 300, careIntervalMs: 100 };
 function directory(t: test.TestContext) {
   const dir = mkdtempSync(path.join(tmpdir(), 'jarvis-hatch-'));
   t.after(() => rmSync(dir, { recursive: true, force: true })); return dir;
@@ -123,4 +125,100 @@ test('corrupt, missing and foreign-pet snapshots fail without replacement', t =>
     assert.throws(() => new LifecycleRepository(dir, options));
     assert.deepEqual(readFileSync(petDatabasePath(dir)), before);
   }
+});
+
+test('pure readiness: elapsed boundary without care, actual events, bounded reduction and invalid inputs', () => {
+  const at = (elapsedMs: number) => ({ elapsedMs, observedAtMs: 10_000 });
+  const touch = { kind: 'touch' as const, occurredAtMs: 1, elapsedMs: 1 };
+  const stroke = { ...touch, kind: 'stroke' as const, elapsedMs: 101 };
+  assert.equal(hatchReadiness(at(999), [], readinessPolicy).ready, false);
+  assert.equal(hatchReadiness(at(1000), [], readinessPolicy).ready, true);
+  assert.equal(hatchReadiness(at(850), [touch, stroke], readinessPolicy).ready, true);
+  assert.equal(hatchReadiness(at(849), [touch, stroke], readinessPolicy).ready, false);
+  const spaced = Array.from({ length: 4 }, (_, index) => ({ ...stroke, elapsedMs: index * 100 }));
+  assert.deepEqual(hatchReadiness(at(699), spaced, readinessPolicy),
+    { ready: false, reductionMs: 300, requiredElapsedMs: 700 });
+  assert.equal(hatchReadiness(at(700), spaced, readinessPolicy).ready, true);
+  assert.deepEqual(hatchReadiness(at(700), Array(100).fill(stroke), readinessPolicy),
+    { ready: false, reductionMs: 100, requiredElapsedMs: 900 });
+  assert.equal(hatchReadiness(at(1000), [{ ...stroke, elapsedMs: 0 }, { ...stroke, elapsedMs: 99 }], readinessPolicy).reductionMs, 100);
+  assert.equal(hatchReadiness(at(1000), [{ ...stroke, elapsedMs: 0 }, { ...stroke, elapsedMs: 100 }], readinessPolicy).reductionMs, 200);
+  for (const policy of [{ ...readinessPolicy, baseDurationMs: 0 }, { ...readinessPolicy, maxCareReductionMs: 1000 },
+    { ...readinessPolicy, maxCareReductionMs: -1 }, { ...readinessPolicy, careIntervalMs: 0 },
+    { ...readinessPolicy, careReductionMs: { touch: NaN, stroke: 1 } }]) {
+    assert.throws(() => hatchReadiness(at(1000), [], policy), /INVALID_HATCH_POLICY/);
+  }
+  assert.throws(() => hatchReadiness(at(-1), [], readinessPolicy), /INVALID_HATCH_EVIDENCE/);
+  assert.throws(() => hatchReadiness(at(0), [stroke], readinessPolicy), /INVALID_HATCH_EVIDENCE/);
+  assert.throws(() => hatchReadiness(at(1000), [{ ...stroke, occurredAtMs: 10_001 }], readinessPolicy), /INVALID_HATCH_EVIDENCE/);
+});
+
+test('readiness persists only preparation after absence/restart; repeated checks never witness or reset it', t => {
+  const dir = directory(t); const pet = loadOrCreateEgg(dir); const start = Date.parse(pet.createdAt);
+  openEggLife(dir, () => start).close();
+  let store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 999).ready, false);
+  store.close();
+  store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  const prepared = store.prepareIfReady(readinessPolicy, start + 86_400_000);
+  assert.deepEqual(prepared, { ...initialLifecycle(pet.petId), ready: true, revision: 1 });
+  assert.deepEqual(store.prepareIfReady(readinessPolicy, start), prepared);
+  store.close();
+  store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  assert.deepEqual(store.read(), prepared);
+  assert.deepEqual(store.prepareIfReady(readinessPolicy, start + 172_800_000), prepared);
+  store.close();
+  const db = new DatabaseSync(petDatabasePath(dir));
+  assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 0); db.close();
+});
+
+test('only committed care shortens readiness; failed care and time reversal cannot invent events or elapsed', t => {
+  const dir = directory(t); const pet = loadOrCreateEgg(dir); const start = Date.parse(pet.createdAt);
+  let now = start;
+  let life = openEggLife(dir, () => now);
+  const store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  const db = new DatabaseSync(petDatabasePath(dir));
+  db.exec("CREATE TRIGGER reject_care BEFORE INSERT ON egg_care BEGIN SELECT RAISE(ABORT, 'test'); END");
+  now += 100; assert.throws(() => life.care('stroke'));
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 900).ready, false);
+  db.exec('DROP TRIGGER reject_care');
+  // A real care record can occur while the wall clock is behind its high water mark.
+  life.care('stroke'); life.close();
+  life = openEggLife(dir, () => start + 899);
+  assert.equal(life.checkpoint().elapsedMs, 900);
+  const prepared = store.prepareIfReady(readinessPolicy, start + 899);
+  assert.equal(prepared.ready, true); assert.equal(prepared.completed, null);
+  assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 1);
+  life.close(); store.close(); db.close();
+});
+
+test('readiness write failure rolls elapsed and ready back together and retry commits once', t => {
+  const dir = directory(t); const pet = loadOrCreateEgg(dir); const start = Date.parse(pet.createdAt);
+  const life = openEggLife(dir, () => start);
+  const store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  const db = new DatabaseSync(petDatabasePath(dir));
+  db.exec("CREATE TRIGGER reject_ready BEFORE UPDATE ON lifecycle BEGIN SELECT RAISE(ABORT, 'test'); END");
+  assert.throws(() => store.prepareIfReady(readinessPolicy, start + 1000), /LIFECYCLE_WRITE_FAILED/);
+  assert.equal(life.read().elapsedMs, 0); assert.equal(store.read().ready, false);
+  db.exec('DROP TRIGGER reject_ready');
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 1000).revision, 1);
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 1000).revision, 1);
+  life.close(); store.close(); db.close();
+});
+
+test('care eligibility gap survives restart; rapid events stay recorded without multiplying reduction', t => {
+  const dir = directory(t); const start = Date.parse(loadOrCreateEgg(dir).createdAt);
+  let now = start;
+  let life = openEggLife(dir, () => now);
+  life.care('stroke');
+  now += 99; life.care('stroke'); life.close();
+  let store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 99).ready, false); store.close();
+  life = openEggLife(dir, () => now);
+  now = start + 100; life.care('stroke'); life.close();
+  store = new LifecycleRepository(dir, { namePolicy: options.namePolicy });
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 799).ready, false);
+  assert.equal(store.prepareIfReady(readinessPolicy, start + 800).ready, true); store.close();
+  const db = new DatabaseSync(petDatabasePath(dir));
+  assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 3); db.close();
 });
