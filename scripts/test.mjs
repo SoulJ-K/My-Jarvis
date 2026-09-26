@@ -5,6 +5,8 @@ import electron from 'electron';
 for (const [args, asNode] of [
   [['--test', 'dist/tests/brain.test.js', 'dist/tests/egg-life.test.js'], true],
   [['--test', 'dist/tests/lifecycle.test.js'], true],
+  [['--test', 'dist/tests/baby-life.test.js'], true],
+  [['dist/tests/baby-smoke.js'], false],
   [['--test', 'dist/tests/three-way-integration.test.js'], true],
   [['--test', 'dist/tests/hatch-product.test.js'], true],
   [['--test', 'dist/tests/timer.test.js'], true],
