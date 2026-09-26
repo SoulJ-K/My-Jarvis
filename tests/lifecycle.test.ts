@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { spawnSync } from 'node:child_process';
-import { hatchReadiness, hatchScenes, initialLifecycle, advanceLifecycle, nextHatchStep, normalizePetName } from '../src/pet/lifecycle';
+import { DEFAULT_HATCH_READINESS_POLICY, hatchReadiness, hatchScenes, initialLifecycle, advanceLifecycle, nextHatchStep, normalizePetName } from '../src/pet/lifecycle';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { openEggLife } from '../src/storage/egg-life-repository';
 
-// User-selected first-name policy; preparation remains a test-only trigger.
+// The direct prepare command remains a test-only seed alongside real readiness.
 const options = { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true };
 // Deliberately tiny test policy. These values are not product defaults.
 const readinessPolicy = { baseDurationMs: 1000, careReductionMs: { touch: 50, stroke: 100 }, maxCareReductionMs: 300, careIntervalMs: 100 };
@@ -221,4 +221,25 @@ test('care eligibility gap survives restart; rapid events stay recorded without 
   assert.equal(store.prepareIfReady(readinessPolicy, start + 800).ready, true); store.close();
   const db = new DatabaseSync(petDatabasePath(dir));
   assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 3); db.close();
+});
+
+test('approved default policy: 24h without care, 18h floor, equal care kinds and 1h eligibility boundaries', () => {
+  const hour = 60 * 60 * 1000;
+  const at = (elapsedMs: number) => ({ elapsedMs, observedAtMs: elapsedMs });
+  const event = (elapsedMs: number, kind: 'touch' | 'stroke' = 'touch') => ({ kind, elapsedMs, occurredAtMs: elapsedMs });
+  const readiness = (elapsedMs: number, care: ReturnType<typeof event>[] = []) => hatchReadiness(at(elapsedMs), care, DEFAULT_HATCH_READINESS_POLICY);
+  assert.equal(readiness(24 * hour - 1).ready, false);
+  assert.equal(readiness(24 * hour).ready, true);
+  assert.equal(readiness(365 * 24 * hour).ready, true);
+  for (const kind of ['touch', 'stroke'] as const) {
+    assert.equal(readiness(23.5 * hour - 1, [event(0, kind)]).ready, false);
+    assert.equal(readiness(23.5 * hour, [event(0, kind)]).ready, true);
+  }
+  const spam = Array.from({ length: 100 }, (_, index) => event(index));
+  assert.equal(readiness(18 * hour, spam).reductionMs, hour / 2);
+  assert.equal(readiness(18 * hour, [event(0), event(hour - 1, 'stroke')]).reductionMs, hour / 2);
+  assert.equal(readiness(18 * hour, [event(0), event(hour, 'stroke')]).reductionMs, hour);
+  const spaced = Array.from({ length: 18 }, (_, index) => event(index * hour, index % 2 ? 'stroke' : 'touch'));
+  assert.deepEqual(readiness(18 * hour - 1, spaced), { ready: false, reductionMs: 6 * hour, requiredElapsedMs: 18 * hour });
+  assert.deepEqual(readiness(18 * hour, spaced), { ready: true, reductionMs: 6 * hour, requiredElapsedMs: 18 * hour });
 });

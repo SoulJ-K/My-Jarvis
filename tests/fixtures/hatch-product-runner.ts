@@ -9,12 +9,14 @@ import { openEggLife } from '../../src/storage/egg-life-repository';
 import { hatchScenes, nextHatchStep, type Lifecycle } from '../../src/pet/lifecycle';
 import type { HatchView } from '../../src/shared/hatch';
 
-const [directory, mode] = process.argv.slice(2);
-if (!directory || !['inspect', 'step', 'exercise', 'ready-live', 'ready-care', 'ready-startup', 'activation'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
+const [directory, mode, clockValue] = process.argv.slice(2);
+if (!directory || !['inspect', 'step', 'exercise', 'ready-live', 'ready-care', 'ready-startup', 'activation',
+  'policy-inspect', 'policy-activation', 'policy-live', 'policy-care'].includes(mode)) throw new Error('INVALID_TEST_ARGUMENTS');
 app.setPath('userData', directory);
+const activationMode = mode === 'activation' || mode === 'policy-activation';
 let trayMenu: Menu | undefined;
 let electronForApp: typeof import('electron') | undefined;
-if (mode === 'activation') {
+if (activationMode) {
   // Exercise the show=true product routing and actual menu callbacks, replacing
   // only native presentation so no OS tray, foreground window or focus changes.
   electronForApp = { ...require('electron'), Tray: class {
@@ -40,10 +42,13 @@ modules._load = function (request: string, parent: { filename: string }, ...args
 let lifecycle: typeof import('../../src/main/app');
 try { lifecycle = require('../../src/main/app'); } finally { modules._load = originalLoad; }
 const startJarvis = lifecycle.startJarvis;
-const readinessMode = mode.startsWith('ready-');
+const injectedPolicy = mode.startsWith('ready-');
+const productPolicyMode = mode.startsWith('policy-');
+const readinessMode = injectedPolicy || mode === 'policy-live' || mode === 'policy-care';
 let eggNow = 0;
-if (readinessMode) {
-  eggNow = Date.parse(loadOrCreateEgg(directory).createdAt);
+if (readinessMode || productPolicyMode) {
+  eggNow = clockValue === undefined ? Date.parse(loadOrCreateEgg(directory).createdAt) : Number(clockValue);
+  if (!Number.isSafeInteger(eggNow) || eggNow < 0) throw new Error('INVALID_TEST_CLOCK');
   openEggLife(directory, () => eggNow).close();
   if (mode === 'ready-startup') eggNow += 1000;
 }
@@ -62,14 +67,27 @@ async function until(check: () => Promise<boolean>) {
   for (let i = 0; i < 150; i++) { if (await check()) return; await pause(); }
   throw new Error('UI_DID_NOT_SETTLE');
 }
-lifecycle.startJarvis = () => startJarvis({ show: mode === 'activation',
-  ...(mode === 'activation' ? { notifySchedule: () => ({ status: 'unsupported' as const }) } : {}),
-  ...(readinessMode ? { hatchPolicy: { baseDurationMs: 1000, careReductionMs: { touch: 100, stroke: 200 }, maxCareReductionMs: 300, careIntervalMs: 100 }, eggNow: () => eggNow } : {}),
+lifecycle.startJarvis = () => startJarvis({ show: activationMode,
+  ...(activationMode ? { notifySchedule: () => ({ status: 'unsupported' as const }) } : {}),
+  ...(injectedPolicy ? { hatchPolicy: { baseDurationMs: 1000, careReductionMs: { touch: 100, stroke: 200 }, maxCareReductionMs: 300, careIntervalMs: 100 } } : {}),
+  ...(readinessMode || productPolicyMode ? { eggNow: () => eggNow } : {}),
   onReady: async pet => {
   const db = new DatabaseSync(petDatabasePath(directory));
   const state = (): Lifecycle => JSON.parse(String(db.prepare('SELECT snapshot FROM lifecycle').get()?.snapshot));
   const original = state();
-  if (mode === 'activation') {
+  if (mode === 'policy-inspect') {
+    const waiting = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남');
+    assert.equal(Boolean(waiting), original.ready && original.name === null);
+    if (waiting) {
+      assert.equal(waiting.isVisible(), false);
+      assert.equal((await waiting.webContents.executeJavaScript('window.hatch.read()')).available, false);
+    }
+    assert.equal(original.completed, null); assert.equal(original.stage, 'egg');
+    assert.equal(original.orbId, null); assert.equal(original.name, null);
+    console.log(`HATCH_PRODUCT:${JSON.stringify(state())}`);
+    db.close(); clearTimeout(timeout); app.quit(); return;
+  }
+  if (activationMode) {
     const waiting = BrowserWindow.getAllWindows().find(w => w.getTitle() === 'Jarvis Pet · 첫 만남')!;
     assert.equal(original.ready, true); assert.equal(original.completed, null);
     assert.equal(waiting.isVisible(), false); assert.equal(pet.isVisible(), true);
@@ -99,8 +117,9 @@ lifecycle.startJarvis = () => startJarvis({ show: mode === 'activation',
     if (mode !== 'ready-startup') {
       assert.equal(original.ready, false);
       assert.equal(BrowserWindow.getAllWindows().some(w => w.getTitle() === 'Jarvis Pet · 첫 만남'), false);
-      eggNow += mode === 'ready-care' ? 900 : 1000;
-      if (mode === 'ready-care') {
+      const careMode = mode.endsWith('care');
+      eggNow += injectedPolicy ? (careMode ? 900 : 1000) : (careMode ? 23.5 : 24) * 60 * 60 * 1000;
+      if (careMode) {
         await pet.webContents.executeJavaScript('window.petWindow.beginDrag(); window.petWindow.endDrag()');
         assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 1);
       } else {

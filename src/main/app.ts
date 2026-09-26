@@ -11,20 +11,21 @@ import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 import { LifecycleRepository } from '../storage/lifecycle-repository';
 import { createHatchWindow } from './hatch-window';
-import type { HatchReadinessPolicy } from '../pet/lifecycle';
+import { DEFAULT_HATCH_READINESS_POLICY, type HatchReadinessPolicy } from '../pet/lifecycle';
 
 // Test entry points call this same startup with isolated userData and hidden windows.
 // No test settings or storage paths are exposed to the renderer.
 export function startJarvis(options: {
   show?: boolean;
   notifySchedule?: NotifySchedule;
-  /** Main-process injection for isolated checks; product policy remains unset. */
+  /** Override the approved product policy only in isolated main-process checks. */
   hatchPolicy?: HatchReadinessPolicy;
   eggNow?: () => number;
   onReady?: (win: BrowserWindow) => Promise<void>;
   onFailure?: (code: string) => void;
 } = {}): void {
   const show = options.show ?? true;
+  const hatchPolicy = options.hatchPolicy ?? DEFAULT_HATCH_READINESS_POLICY;
   app.setName('Jarvis Pet');
   let tray: Tray | undefined;
   let win: BrowserWindow | undefined;
@@ -63,7 +64,7 @@ export function startJarvis(options: {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
-    // No test-only prepare command is enabled. A real policy is required below.
+    // Product readiness uses committed elapsed/care evidence, never the test seed.
     const lifecycle = new LifecycleRepository(app.getPath('userData'), {
       // User-selected first-name policy: trim outer whitespace, 1–20 code points.
       namePolicy: { trim: true, maxCodePoints: 20 },
@@ -78,8 +79,7 @@ export function startJarvis(options: {
     const checkpoint = () => {
       try {
         if (!state.ready) {
-          if (options.hatchPolicy) state = lifecycle.prepareIfReady(options.hatchPolicy, eggNow());
-          else life.checkpoint();
+          state = lifecycle.prepareIfReady(hatchPolicy, eggNow());
         }
         hatching = state.ready && state.name === null;
         // Readiness never opens a scene or records a witness. Only the user's

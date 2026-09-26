@@ -14,7 +14,7 @@ export interface Lifecycle {
   readonly revision: number;
 }
 export interface NamePolicy { readonly trim: boolean; readonly maxCodePoints: number }
-/** Product choices are explicit; there is no inferred production duration. */
+/** Explicit policy, also injectable for isolated clock and storage checks. */
 export interface HatchReadinessPolicy {
   readonly baseDurationMs: number;
   readonly careReductionMs: Readonly<Record<EggCareKind, number>>;
@@ -22,6 +22,15 @@ export interface HatchReadinessPolicy {
   /** Minimum elapsed gap between care records eligible for a reduction. */
   readonly careIntervalMs: number;
 }
+
+/** User-approved v0.1 policy: 24 hours, at most 6 hours off, one eligible care
+ * per elapsed hour. Both actual touch and stroke records reduce by 30 minutes. */
+export const DEFAULT_HATCH_READINESS_POLICY: HatchReadinessPolicy = Object.freeze({
+  baseDurationMs: 24 * 60 * 60 * 1000,
+  careReductionMs: Object.freeze({ touch: 30 * 60 * 1000, stroke: 30 * 60 * 1000 }),
+  maxCareReductionMs: 6 * 60 * 60 * 1000,
+  careIntervalMs: 60 * 60 * 1000,
+});
 
 export function hatchReadiness(life: EggLife, care: readonly EggCareEvent[], policy: HatchReadinessPolicy) {
   const nonnegative = (value: number) => Number.isSafeInteger(value) && value >= 0;

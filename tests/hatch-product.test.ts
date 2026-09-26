@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
+import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
+import { openEggLife } from '../src/storage/egg-life-repository';
+import { DatabaseSync } from 'node:sqlite';
 import { hatchScenes, type Lifecycle } from '../src/pet/lifecycle';
 
 const options = { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true };
@@ -13,16 +16,16 @@ function workspace(t: test.TestContext) {
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   return directory;
 }
-function launch(directory: string, mode: string): Lifecycle {
+function launch(directory: string, mode: string, now?: number): Lifecycle {
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  const run = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/hatch-product-runner.js'), directory, mode],
+  const run = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/hatch-product-runner.js'), directory, mode, ...(now === undefined ? [] : [String(now)])],
     { env, encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0, run.stderr);
   const line = run.stdout.split('\n').find(line => line.startsWith('HATCH_PRODUCT:'));
   assert.ok(line, run.stderr);
   return JSON.parse(line.slice('HATCH_PRODUCT:'.length));
 }
-test('ordinary app does not prepare automatically; every witnessed checkpoint restores through production startup', t => {
+test('fresh egg waits for its deadline; test seed and every witnessed checkpoint still restore through production startup', t => {
   const directory = workspace(t);
   const egg = launch(directory, 'inspect');
   assert.equal(egg.ready, false);
@@ -66,4 +69,53 @@ test('activation and second launch only show a ready egg; the tray starts hatchi
   const result = launch(directory, 'activation');
   assert.equal(result.completed, 'prelude');
   assert.equal(result.stage, 'egg');
+});
+
+test('default product policy prepares at 24h without care and survives long absence without witnessing', t => {
+  const directory = workspace(t);
+  const pet = loadOrCreateEgg(directory); const start = Date.parse(pet.createdAt);
+  const hour = 60 * 60 * 1000;
+  assert.equal(launch(directory, 'policy-inspect', start + 24 * hour - 1).ready, false);
+  const ready = launch(directory, 'policy-inspect', start + 24 * hour);
+  assert.equal(ready.ready, true); assert.equal(ready.petId, pet.petId);
+  assert.deepEqual(launch(directory, 'policy-inspect', start + 30 * 24 * hour), ready);
+  const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+  assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 0); db.close();
+  const absentDirectory = workspace(t);
+  const absentStart = Date.parse(loadOrCreateEgg(absentDirectory).createdAt);
+  const returned = launch(absentDirectory, 'policy-inspect', absentStart + 30 * 24 * hour);
+  assert.equal(returned.ready, true); assert.equal(returned.revision, 1);
+});
+
+test('default product policy uses real mixed care with a 1h gap and 6h cap, including restart and spam', t => {
+  const directory = workspace(t);
+  const start = Date.parse(loadOrCreateEgg(directory).createdAt);
+  const hour = 60 * 60 * 1000;
+  let now = start;
+  const care = openEggLife(directory, () => now);
+  for (let index = 0; index < 18; index++) {
+    now = start + index * hour;
+    care.care(index % 2 ? 'stroke' : 'touch');
+    now++; care.care('touch'); // Preserved real event, ineligible for another reduction.
+  }
+  care.close();
+  assert.equal(launch(directory, 'policy-inspect', start + 18 * hour - 1).ready, false);
+  const ready = launch(directory, 'policy-inspect', start + 18 * hour);
+  assert.equal(ready.ready, true);
+  assert.deepEqual(launch(directory, 'policy-inspect', start + 17 * hour), ready);
+  const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+  assert.equal(db.prepare('SELECT count(*) n FROM egg_care').get()?.n, 36); db.close();
+});
+
+test('default product policy runs on live resume/care and still requires the tray for first start', t => {
+  for (const mode of ['policy-live', 'policy-care']) {
+    const directory = workspace(t);
+    const ready = launch(directory, mode);
+    assert.equal(ready.ready, true); assert.equal(ready.completed, null);
+  }
+  const directory = workspace(t);
+  const start = Date.parse(loadOrCreateEgg(directory).createdAt);
+  // No readiness seed or policy override: normal startup reaches the 24h boundary.
+  const started = launch(directory, 'policy-activation', start + 24 * 60 * 60 * 1000);
+  assert.equal(started.completed, 'prelude'); assert.equal(started.stage, 'egg');
 });
