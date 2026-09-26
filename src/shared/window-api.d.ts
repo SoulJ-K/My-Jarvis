@@ -1,8 +1,9 @@
 interface Window {
   babyLife: {
-    read: () => Promise<import('../pet/baby-life').BabyView | null>;
-    feed: (offerId: string, x: number, y: number) => Promise<import('../pet/baby-life').BabyView>;
-    subscribe: (listener: (state: import('../pet/baby-life').BabyView) => void) => () => void;
+    onDirection: (listener: (direction: 'left' | 'right') => void) => () => void;
+    read: () => Promise<import('../pet/baby-life').BabyPresentation | null>;
+    feed: (offerId: string, x: number, y: number) => Promise<import('../pet/baby-life').BabyPresentation>;
+    subscribe: (listener: (state: import('../pet/baby-life').BabyPresentation) => void) => () => void;
     onSaveFailed: (listener: () => void) => () => void;
   };
   petBrain: {

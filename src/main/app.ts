@@ -103,7 +103,15 @@ export function startJarvis(options: {
         console.error('알람 저장소 오류: SCHEDULE_STORAGE_FAILED');
         if (show) dialog.showErrorBox('알람을 열지 못했습니다', '알람 저장소를 읽지 못했습니다. 기존 파일과 타이머·알은 보존합니다.');
       }
-      panels = await createPromptWindows(service, show, schedules);
+      panels = await createPromptWindows(service, show, schedules, command => {
+        if (state.stage !== 'baby' || !state.name) return null;
+        const view = baby.view(baby.apply(command));
+        if (!win!.isDestroyed()) win!.webContents.send('baby:state', view);
+        if (command.type === 'stop') return '놀이를 멈추고 쉬어요.';
+        if (view.behavior !== 'resting') return '지금은 먹거나 쉬고 있어요. 조용히 들었어요.';
+        if (command.type === 'orb' && view.social.motion !== 'play-orb') return '지금은 잠깐 쉬고 싶대요.';
+        return view.social.caption || '조용히 들었어요.';
+      });
       const timerService = service;
       const tick = () => { try { timerService.tick(); } catch { console.error('타이머 저장 오류: TIMER_TICK_FAILED'); } };
       const scheduleTick = () => { try { schedules?.tick(); } catch { console.error('알람 저장 오류: SCHEDULE_TICK_FAILED'); } };

@@ -1,3 +1,4 @@
+import { parseBabyInput, type SocialCommand } from '../pet/baby-social';
 import { BrowserWindow, ipcMain, screen, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -5,7 +6,7 @@ import type { TimerService } from '../assistant/timer';
 import type { ReminderService } from '../assistant/reminders';
 
 /** Separate focusable input; the pet window stays non-activating. */
-export async function createPromptWindows(service: TimerService, showNotices = true, schedules?: ReminderService) {
+export async function createPromptWindows(service: TimerService, showNotices = true, schedules?: ReminderService, interact?: (command: SocialCommand) => string | null) {
   const page = path.join(__dirname, '../renderer/prompt.html');
   const noticePage = path.join(__dirname, '../renderer/timer-notice.html');
   const preferences = { preload: path.join(__dirname, '../preload/prompt.js'),
@@ -39,7 +40,19 @@ export async function createPromptWindows(service: TimerService, showNotices = t
     return value;
   };
   handle('timer:read', true, 0, () => service.views());
-  handle('timer:submit', false, 2, (requestId: unknown, input: unknown) => service.submit(requestId, input));
+  handle('timer:submit', false, 2, (requestId: unknown, input: unknown) => {
+    id(requestId);
+    const command = parseBabyInput(input);
+    if (command && interact) {
+      const message = interact(command);
+      return { ok: message !== null, message: message ?? '아기가 된 뒤에 이야기할 수 있어요.', timers: service.views() };
+    }
+    const reply = service.submit(requestId, input);
+    if (!reply.ok && command === null && !/^5\s*분\s*타이머$/.test(String(input).trim())) {
+      reply.message = '“5분 타이머”, “안녕”, “잘했어”, “구슬 놀이”, “그만”을 입력해 주세요. 다른 문장은 실행하지 않았습니다.';
+    }
+    return reply;
+  });
   handle('timer:cancel', false, 1, (value: unknown) => service.cancel(id(value)));
   handle('timer:ack', false, 1, (value: unknown) => service.acknowledge(id(value)));
   handlers.push('timer:displayed');

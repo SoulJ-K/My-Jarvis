@@ -66,3 +66,5 @@ export function advanceBabyLife(before: BabyLife, now: number, command: BabyComm
   validateBabyLife(s);
   return { state: s, events };
 }
+
+export type BabyPresentation = BabyView & { social: import('./baby-social').BabySocialView };

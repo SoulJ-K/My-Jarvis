@@ -1,3 +1,4 @@
+import { initialBabySocial } from '../pet/baby-social';
 import { initialBabyLife } from '../pet/baby-life';
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -95,8 +96,11 @@ export class LifecycleRepository {
           this.db.prepare('UPDATE lifecycle SET snapshot=? WHERE singleton=1').run(JSON.stringify(after));
           // v4: anchor life at the name commit, even if the page never loads.
           // A failed initialization rolls the name and stage checkpoint back too.
-          if (command.type === 'name' && this.db.prepare('PRAGMA user_version').get()?.user_version === 4) {
+          if (command.type === 'name' && Number(this.db.prepare('PRAGMA user_version').get()?.user_version) >= 4) {
             this.db.prepare('INSERT INTO baby_life VALUES(1, ?)').run(JSON.stringify(initialBabyLife(Date.now())));
+            if (this.db.prepare('PRAGMA user_version').get()?.user_version === 5) {
+              this.db.prepare('INSERT INTO baby_social VALUES(1, ?)').run(JSON.stringify(initialBabySocial()));
+            }
           }
         }
         return Object.freeze(after);

@@ -26,7 +26,7 @@ function readEgg(db: DatabaseSync): EggSnapshot {
     throw new PetStorageError('INVALID_STORE');
   }
   const version = Number(db.prepare('PRAGMA user_version').get()?.user_version);
-  if (![1, 2, 3, 4].includes(version)) {
+  if (![1, 2, 3, 4, 5].includes(version)) {
     throw new PetStorageError('UNSUPPORTED_FORMAT');
   }
   const rows = db.prepare('SELECT singleton, pet_id, created_at, stage FROM pet LIMIT 2').all();
