@@ -8,7 +8,10 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run build && node scripts/test.mjs"
+    "test": "npm run build && node scripts/test.mjs",
+    "package:mac": "npm run build && node scripts/package-mac.mjs",
+    "test:mac-package": "npm run build && node scripts/test-mac-package.mjs",
+    "test:notifications": "npm run build && electron dist/tests/notifications-checks.js"
   },
   "license": "UNLICENSED",
   "devDependencies": {
