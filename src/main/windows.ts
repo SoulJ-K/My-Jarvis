@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEv
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { EggSnapshot } from '../shared/pet';
+import { EggBrain } from '../pet/brain';
 
 const WIDTH = 180;
 const HEIGHT = 200;
@@ -29,6 +30,15 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
       nodeIntegration: false, contextIsolation: true, sandbox: true,
       webSecurity: true, spellcheck: false,
     },
+  });
+
+  const brain = new EggBrain({
+    after(milliseconds, callback) {
+      const timer = setTimeout(callback, milliseconds);
+      return () => clearTimeout(timer);
+    },
+  }, state => {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('pet:state', state);
   });
 
   let drag: { cursor: Electron.Point; origin: Electron.Point; moved: boolean } | undefined;
@@ -71,6 +81,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
     const moved = drag?.moved ?? true;
     drag = undefined;
     setInteractive(false);
+    if (!moved) brain.touch();
     return moved;
   };
   const cancel = (event: IpcMainEvent) => {
@@ -82,19 +93,24 @@ export async function createPetWindow(pet: EggSnapshot, show = true) {
   ipcMain.on('egg:drag-start', start);
   ipcMain.on('egg:drag-move', move);
   ipcMain.handle('egg:drag-end', end);
+  ipcMain.handle('pet:read-state', event => {
+    if (!validSender(event)) throw new Error('Pet state request denied');
+    return brain.snapshot();
+  });
   ipcMain.on('egg:drag-cancel', cancel);
   ipcMain.handle('egg:snapshot', (event, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0) throw new Error('EGG_REQUEST_DENIED');
-    // Read-only, repeatable snapshot. No paths, SQL, writes, or general command interface.
     return { petId: pet.petId, createdAt: pet.createdAt, stage: pet.stage };
   });
   win.on('closed', () => {
+    brain.dispose();
+    ipcMain.removeHandler('egg:snapshot');
     ipcMain.removeListener('egg:hover', hover);
     ipcMain.removeListener('egg:drag-start', start);
     ipcMain.removeListener('egg:drag-move', move);
     ipcMain.removeHandler('egg:drag-end');
+    ipcMain.removeHandler('pet:read-state');
     ipcMain.removeListener('egg:drag-cancel', cancel);
-    ipcMain.removeHandler('egg:snapshot');
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());

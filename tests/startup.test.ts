@@ -99,3 +99,60 @@ test('terminating a running app preserves the already committed identity', async
     assert.equal((await next.closed).code, 0);
   } finally { if (first.child.exitCode === null) first.child.kill('SIGKILL'); }
 });
+
+interface ObservedEgg {
+  snapshot: { petId: string; createdAt: string; stage: 'egg' };
+  state: { behavior: 'idle' | 'reacting'; revision: number };
+  rendered: string;
+  behavior: string;
+  reacting: boolean;
+}
+interface ExercisedEgg {
+  exercise: { initial: ObservedEgg; clicked: ObservedEgg; reloaded: ObservedEgg; rested: ObservedEgg };
+}
+function checkExercise(report: ExercisedEgg, expected?: ObservedEgg['snapshot']) {
+  const { initial, clicked, reloaded, rested } = report.exercise;
+  if (expected) assert.deepEqual(initial.snapshot, expected);
+  assert.deepEqual(initial.state, { behavior: 'idle', revision: 0 });
+  assert.deepEqual(clicked.state, { behavior: 'reacting', revision: 1 });
+  assert.equal(clicked.reacting, true);
+  assert.ok(reloaded.state.revision >= 1);
+  assert.deepEqual(rested.state, { behavior: 'idle', revision: 2 });
+  assert.equal(rested.reacting, false);
+  for (const observation of [initial, clicked, reloaded, rested]) {
+    assert.deepEqual(observation.snapshot, initial.snapshot);
+    assert.equal(observation.rendered, initial.snapshot.petId);
+    assert.equal(observation.behavior, observation.state.behavior);
+  }
+  return initial.snapshot;
+}
+
+test('combined app: create → real page click → reaction → reload → rest → quit → restore → click again', async t => {
+  const directory = workspace(t);
+  const first = launch(directory, 'exercise');
+  const identity = checkExercise(await first.ready as ExercisedEgg);
+  assert.equal((await first.closed).code, 0);
+  assert.deepEqual(loadOrCreateEgg(directory), identity);
+  const before = readFileSync(petDatabasePath(directory));
+  const second = launch(directory, 'exercise');
+  checkExercise(await second.ready as ExercisedEgg, identity);
+  assert.equal((await second.closed).code, 0);
+  // Temporary reactions must not become persistent identity or experience records.
+  assert.deepEqual(readFileSync(petDatabasePath(directory)), before);
+});
+
+test('combined app: killed during reaction restores same egg at rest and accepts another page click', async t => {
+  const directory = workspace(t);
+  const first = launch(directory, 'react-hold');
+  try {
+    const report = await first.ready as ExercisedEgg;
+    assert.equal(report.exercise.clicked.state.behavior, 'reacting');
+    const identity = report.exercise.initial.snapshot;
+    first.child.kill('SIGKILL');
+    await first.closed;
+    const second = launch(directory, 'exercise');
+    checkExercise(await second.ready as ExercisedEgg, identity);
+    assert.equal((await second.closed).code, 0);
+    assert.deepEqual(loadOrCreateEgg(directory), identity);
+  } finally { if (first.child.exitCode === null) first.child.kill('SIGKILL'); }
+});

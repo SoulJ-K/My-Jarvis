@@ -8,6 +8,8 @@ import { createPetWindow } from '../src/main/windows';
 
 // App-owned integration checks. These do not simulate clicks in other macOS apps.
 app.setName('Jarvis Pet Smoke Test');
+// Do not let the default exit hide failures between test windows.
+app.on('window-all-closed', () => {});
 const testData = mkdtempSync(path.join(tmpdir(), 'jarvis-egg-smoke-'));
 app.setPath('userData', testData);
 app.on('quit', () => rmSync(testData, { recursive: true, force: true }));
@@ -88,6 +90,7 @@ app.whenReady().then(async () => {
   })()`);
   assert.deepEqual(hoverCalls, []);
   await assert.rejects(foreign.webContents.executeJavaScript('window.petWindow.snapshot()'), /EGG_REQUEST_DENIED/);
+  assert.equal(await foreign.webContents.executeJavaScript('window.petBrain.read().then(() => false, () => true)'), true);
   foreign.destroy();
   const probePreload = path.join(testData, 'ipc-probe.cjs');
   writeFileSync(probePreload, "const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('probe',{invoke:(channel)=>ipcRenderer.invoke(channel)});");
@@ -98,6 +101,57 @@ app.whenReady().then(async () => {
   await assert.rejects(probe.webContents.executeJavaScript("window.probe.invoke('egg:unregistered')"), /No handler registered/);
   probe.destroy();
   console.log('PASS: 다른 창·미등록 명령 거절');
+
+  assert.deepEqual(await win.webContents.executeJavaScript('window.petBrain.read()'), { behavior: 'idle', revision: 0 });
+  // Simulate the approved gesture messages, not OS mouse input in another app.
+  const afterClick = await win.webContents.executeJavaScript(`(async () => {
+    const changed = new Promise(resolve => {
+      const unsubscribe = window.petBrain.subscribe(state => {
+        if (state.behavior !== 'reacting') return;
+        unsubscribe();
+        resolve(state);
+      });
+    });
+    window.petWindow.beginDrag();
+    const moved = await window.petWindow.endDrag();
+    const state = await changed;
+    return { moved, state, rendered: document.querySelector('#egg').classList.contains('reacting') };
+  })()`);
+  assert.equal(afterClick.moved, false);
+  assert.equal(afterClick.state.behavior, 'reacting');
+  assert.equal(afterClick.rendered, true);
+  win.webContents.send('pet:state', { behavior: 'idle', revision: 0 });
+  assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('reacting')"), true);
+
+  // Reloading the page must read the existing main-process brain, not create revision 0.
+  const loaded = new Promise<void>(resolve => win.webContents.once('did-finish-load', () => resolve()));
+  win.webContents.reload();
+  await loaded;
+  assert.ok((await win.webContents.executeJavaScript('window.petBrain.read()')).revision >= 1);
+  const rested = await win.webContents.executeJavaScript(`(async () => {
+    let unsubscribe;
+    const idle = new Promise(resolve => {
+      unsubscribe = window.petBrain.subscribe(next => {
+        if (next.behavior === 'idle') resolve();
+      });
+    });
+    const state = await window.petBrain.read();
+    if (state.behavior === 'reacting') await idle;
+    unsubscribe();
+    return { state: await window.petBrain.read(), rendered: document.querySelector('#egg').classList.contains('reacting') };
+  })()`);
+  assert.deepEqual(rested.state, { behavior: 'idle', revision: 2 });
+  assert.equal(rested.rendered, false);
+  console.log('PASS: 승인된 클릭 → Brain 반응 → 화면 갱신 → 휴식, 화면 재로딩 중 상태 유지');
+
+  await win.webContents.executeJavaScript(`(async () => {
+    window.petWindow.beginDrag();
+    window.petWindow.cancelDrag();
+    await window.petWindow.endDrag();
+    await window.petWindow.endDrag();
+  })()`);
+  assert.deepEqual(await win.webContents.executeJavaScript('window.petBrain.read()'), { behavior: 'idle', revision: 2 });
+  console.log('PASS: 취소된 드래그·중복 종료 메시지는 클릭 반응을 만들지 않음');
 
   const capture = await win.webContents.capturePage();
   assert.equal(capture.isEmpty(), false);
@@ -111,6 +165,11 @@ app.whenReady().then(async () => {
   assert.deepEqual(errors, []);
   console.log('PASS: 투명 배경·불투명 알 렌더링, .local/egg-preview.png 저장');
   win.destroy();
+  const reopened = await createPetWindow(loadOrCreateEgg(testData), false);
+  assert.deepEqual(await reopened.webContents.executeJavaScript('window.petBrain.read()'), { behavior: 'idle', revision: 0 });
+  assert.deepEqual(await reopened.webContents.executeJavaScript('window.petWindow.snapshot()'), pet);
+  reopened.destroy();
+  console.log('PASS: 같은 알로 창 재생성·반응 상태 초기화');
   clearTimeout(timeout);
   app.quit();
 }).catch(error => {
