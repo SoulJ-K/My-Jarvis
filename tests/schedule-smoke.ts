@@ -38,6 +38,11 @@ app.whenReady().then(async () => {
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
   await run(`document.querySelector('#schedule-request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('#schedule-form').requestSubmit()`);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
+  await run(`(() => { const button=document.querySelector('#schedule-preview'); button.dispatchEvent(new PointerEvent('pointerdown'));
+    document.querySelector('#schedule-form').requestSubmit(button); })()`);
+  await settle();
+  assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),false);
+  await run('document.querySelector("#schedule-edit").click()');
   await run('new Promise(resolve => setTimeout(resolve,120))');
   await input('오늘 10:00 리마인더 서류 확인'); await settle();
   assert.equal(schedules.views().length,0);

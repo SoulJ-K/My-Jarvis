@@ -41,8 +41,8 @@ app.whenReady().then(async () => {
   assert.equal(service.views().length,0);
   await run(`document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('form').requestSubmit();`);
   assert.equal(service.views().length,0);
-  await run(`new Promise(resolve => setTimeout(resolve,120))`);
-  await run(`document.querySelector('form').requestSubmit()`);
+  await run(`(() => { const button=document.querySelector('#submit'); button.dispatchEvent(new PointerEvent('pointerdown'));
+    document.querySelector('#timer-form').requestSubmit(button); })()`);
   await run(`new Promise(resolve => setTimeout(resolve,150))`);
   assert.equal(service.views().length,1);
   assert.match(await run('document.querySelector("#result").textContent'),/저장했습니다/);

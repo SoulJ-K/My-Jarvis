@@ -168,7 +168,7 @@ test('care app: mouse hold/stroke vs move, cancel, departure, reload, write fail
   const first = launch(directory, 'care');
   const result = await first.ready as { snapshot: unknown; exercise: { kinds: string[]; life: { elapsed_ms: number }; state: { behavior: string } } };
   assert.equal((await first.closed).code, 0);
-  assert.deepEqual(result.exercise.kinds, ['stroke', 'touch']);
+  assert.deepEqual(result.exercise.kinds, ['stroke', 'stroke', 'touch']);
   assert.equal(result.exercise.state.behavior, 'idle');
   const second = launch(directory);
   const restored = await second.ready as { snapshot: unknown; state: { behavior: string } };
@@ -176,7 +176,7 @@ test('care app: mouse hold/stroke vs move, cancel, departure, reload, write fail
   assert.deepEqual(restored.snapshot, result.snapshot);
   assert.equal(restored.state.behavior, 'idle');
   const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
-  assert.deepEqual(db.prepare('SELECT kind FROM egg_care ORDER BY id').all().map(row => row.kind), ['stroke', 'touch']);
+  assert.deepEqual(db.prepare('SELECT kind FROM egg_care ORDER BY id').all().map(row => row.kind), ['stroke', 'stroke', 'touch']);
   assert.ok(Number(db.prepare('SELECT elapsed_ms FROM egg_life').get()?.elapsed_ms) >= result.exercise.life.elapsed_ms);
   db.close();
 });

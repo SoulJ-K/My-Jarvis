@@ -82,6 +82,16 @@ async function exerciseCare(win: BrowserWindow) {
     writeFileSync('.local/egg-care-preview.png', (await win.webContents.capturePage()).toPNG());
     await idle();
 
+    // The main process samples OS cursor movement while the egg is held.
+    // A coalesced or missing renderer pointermove must not lose a real stroke.
+    await hold();
+    cursor.x = 512; await new Promise(resolve => setTimeout(resolve, 55));
+    cursor.x = 500; await new Promise(resolve => setTimeout(resolve, 55));
+    await input('mouseUp');
+    assert.equal((await state()).behavior, 'soothed');
+    assert.equal(count(), 2);
+    await idle();
+
     // Immediate drag remains a move even when it returns to its starting point.
     await input('mouseDown');
     cursor.x = 520; await input('mouseMove', 110);
@@ -89,7 +99,7 @@ async function exerciseCare(win: BrowserWindow) {
     cursor.x = 500; await input('mouseMove');
     await input('mouseUp');
     assert.deepEqual(win.getPosition(), origin);
-    assert.equal(count(), 1);
+    assert.equal(count(), 2);
     assert.equal((await state()).behavior, 'idle');
 
     await hold();
@@ -97,13 +107,13 @@ async function exerciseCare(win: BrowserWindow) {
     cursor.x = 500; await input('mouseMove');
     await win.webContents.executeJavaScript("document.querySelector('#egg').dispatchEvent(new PointerEvent('pointercancel')); void 0;");
     await input('mouseUp');
-    assert.equal(count(), 1);
+    assert.equal(count(), 2);
 
     await hold();
-    cursor.x = 580; await input('mouseMove', 170);
+    cursor.x = 610; await input('mouseMove', 170);
     cursor.x = 500; await input('mouseMove');
     await input('mouseUp');
-    assert.equal(count(), 1);
+    assert.equal(count(), 2);
     assert.deepEqual(win.getPosition(), origin);
 
     // Reload while pressed must discard the gesture and its armed cue.
@@ -111,23 +121,23 @@ async function exerciseCare(win: BrowserWindow) {
     const loaded = new Promise<void>(resolve => win.webContents.once('did-finish-load', () => resolve()));
     win.webContents.reload(); await loaded;
     await win.webContents.executeJavaScript('window.petWindow.endDrag()');
-    assert.equal(count(), 1);
+    assert.equal(count(), 2);
 
     db.exec("CREATE TRIGGER fail_care BEFORE INSERT ON egg_care BEGIN SELECT RAISE(ABORT, 'test failure'); END");
     const before = db.prepare('SELECT * FROM egg_life').get();
     await input('mouseDown'); await input('mouseUp');
     assert.equal((await state()).behavior, 'idle');
-    assert.equal(count(), 1);
+    assert.equal(count(), 2);
     assert.deepEqual(db.prepare('SELECT * FROM egg_life').get(), before);
     assert.match(await win.webContents.executeJavaScript("document.querySelector('#save-status').textContent"), /저장하지 못/);
     writeFileSync('.local/egg-save-failure-preview.png', (await win.webContents.capturePage()).toPNG());
     db.exec('DROP TRIGGER fail_care');
     await input('mouseDown'); await input('mouseUp');
     assert.equal((await state()).behavior, 'reacting');
-    assert.equal(count(), 2);
+    assert.equal(count(), 3);
     assert.equal(await win.webContents.executeJavaScript("document.querySelector('#save-status').textContent"), '');
     await win.webContents.executeJavaScript('window.petWindow.endDrag()');
-    assert.equal(count(), 2);
+    assert.equal(count(), 3);
     await idle();
     return { kinds: db.prepare('SELECT kind FROM egg_care ORDER BY id').all().map(row => row.kind),
       life: db.prepare('SELECT elapsed_ms, observed_at_ms FROM egg_life').get(),

@@ -20,7 +20,7 @@ export class EggGesture {
     this.arm(now);
     if (Math.hypot(cursor.x - this.cursor.x, cursor.y - this.cursor.y) >= 6) this.moved = true;
     if (!this.stroking) return;
-    if (Math.hypot(cursor.x - this.cursor.x, cursor.y - this.cursor.y) > 72) this.outside = true;
+    if (Math.hypot(cursor.x - this.cursor.x, cursor.y - this.cursor.y) > 96) this.outside = true;
     const dx = cursor.x - this.lastX;
     // Ignore small jitter; a real reversal needs at least 6 DIP in the other direction.
     if (Math.abs(dx) < 6) return;
@@ -31,7 +31,7 @@ export class EggGesture {
     this.lastX = cursor.x;
   }
   finish(): 'touch' | 'stroke' | undefined {
-    if (this.stroking) return !this.outside && this.reversed && this.travel >= 24 ? 'stroke' : undefined;
+    if (this.stroking) return !this.outside && this.reversed && this.travel >= 18 ? 'stroke' : undefined;
     return this.moved ? undefined : 'touch';
   }
 }

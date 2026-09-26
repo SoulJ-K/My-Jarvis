@@ -55,7 +55,11 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
 
   let drag: EggGesture | undefined;
   let armTimer: ReturnType<typeof setTimeout> | undefined;
-  const clearArm = () => { clearTimeout(armTimer); armTimer = undefined; };
+  let strokeSampler: ReturnType<typeof setInterval> | undefined;
+  const clearArm = () => {
+    clearTimeout(armTimer); armTimer = undefined;
+    clearInterval(strokeSampler); strokeSampler = undefined;
+  };
   let ignoring = true;
   win.setIgnoreMouseEvents(true, { forward: true });
   const setInteractive = (interactive: boolean) => {
@@ -90,17 +94,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const hover = (event: IpcMainEvent, interactive: unknown) => {
     if (validSender(event) && typeof interactive === 'boolean' && !drag) setInteractive(interactive);
   };
-  const start = (event: IpcMainEvent, ...args: unknown[]) => {
-    if (!validSender(event) || args.length !== 0 || drag) return;
-    const [x, y] = win.getPosition();
-    drag = new EggGesture(screen.getCursorScreenPoint(), { x, y }, performance.now(), currentPet().stage === 'egg');
-    armTimer = setTimeout(() => {
-      if (currentPet().stage === 'egg' && drag?.arm(performance.now())) win.webContents.send('egg:stroke-ready');
-    }, 355);
-    setInteractive(true);
-  };
-  const move = (event: IpcMainEvent | IpcMainInvokeEvent) => {
-    if (!validSender(event) || !drag) return;
+  const moveCursor = () => {
+    if (!drag) return;
     // Read OS coordinates in the main process; the page cannot send arbitrary positions.
     const cursor = screen.getCursorScreenPoint();
     const dx = cursor.x - drag.cursor.x;
@@ -110,6 +105,24 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     const area = screen.getDisplayNearestPoint(cursor).workArea;
     const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area);
     win.setPosition(position.x, position.y, false);
+  };
+  const start = (event: IpcMainEvent, ...args: unknown[]) => {
+    if (!validSender(event) || args.length !== 0 || drag) return;
+    const [x, y] = win.getPosition();
+    drag = new EggGesture(screen.getCursorScreenPoint(), { x, y }, performance.now(), currentPet().stage === 'egg');
+    armTimer = setTimeout(() => {
+      if (currentPet().stage === 'egg' && drag?.arm(performance.now())) {
+        win.webContents.send('egg:stroke-ready');
+        // macOS can coalesce short pointer moves in a non-activating panel.
+        // Sample only while a held egg is in stroke mode, never in idle life.
+        strokeSampler = setInterval(moveCursor, 16);
+      }
+    }, 355);
+    setInteractive(true);
+  };
+  const move = (event: IpcMainEvent | IpcMainInvokeEvent) => {
+    if (!validSender(event) || !drag) return;
+    moveCursor();
   };
   const end = (event: IpcMainInvokeEvent) => {
     if (!validSender(event)) return true;
