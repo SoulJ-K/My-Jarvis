@@ -9,6 +9,7 @@ namespace JarvisHatch {
     private disposed = false;
     private composing = false;
     private compositionEnded = -Infinity;
+    private buttonPressedAt = -Infinity;
     constructor(save: (name: string) => Promise<void>, draft = '') {
       const label = document.createElement('label');
       label.textContent = '어떤 이름으로 불러 줄까요?';
@@ -20,6 +21,7 @@ namespace JarvisHatch {
       this.input.setAttribute('aria-describedby', hint.id);
       label.append(this.input);
       this.button.type = 'submit'; this.button.textContent = '이 이름으로 부르기';
+      this.button.addEventListener('pointerdown', () => { this.buttonPressedAt = performance.now(); });
       this.error.setAttribute('role', 'alert');
       this.element.append(label, hint, this.error, this.button);
       this.input.addEventListener('compositionstart', () => { this.composing = true; });
@@ -29,7 +31,11 @@ namespace JarvisHatch {
       });
       this.element.addEventListener('submit', async event => {
         event.preventDefault();
-        if (this.busy || this.disposed || this.composing || performance.now() - this.compositionEnded < 100) return;
+        // An IME-confirming Enter must not save; a deliberate pointer click must
+        // still work immediately after Korean composition ends.
+        const pointerSubmit = event.submitter === this.button && performance.now() - this.buttonPressedAt < 1000;
+        this.buttonPressedAt = -Infinity;
+        if (this.busy || this.disposed || this.composing || (!pointerSubmit && performance.now() - this.compositionEnded < 100)) return;
         this.busy = true; this.button.disabled = true; this.input.disabled = true;
         this.element.setAttribute('aria-busy', 'true'); this.error.textContent = '';
         this.button.textContent = '저장하고 있어요…';

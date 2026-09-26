@@ -6,6 +6,7 @@
   const submit = document.querySelector<HTMLButtonElement>('#submit')!;
   let composing = false;
   let compositionEnded = -Infinity;
+  let submitPressedAt = -Infinity;
   let busy = false;
   let scheduleBusy = false;
   let requestId = crypto.randomUUID();
@@ -47,13 +48,16 @@
   }
   input.addEventListener('compositionstart', () => { composing = true; cancelAutoClose(); });
   input.addEventListener('compositionend', () => { composing = false; compositionEnded = performance.now(); });
+  submit.addEventListener('pointerdown', () => { submitPressedAt = performance.now(); });
   input.addEventListener('input', () => { cancelAutoClose(); requestId = crypto.randomUUID(); });
   form.addEventListener('keydown', event => {
     if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229 || performance.now() - compositionEnded < 100)) event.preventDefault();
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (busy || composing || performance.now() - compositionEnded < 100) return;
+    const pointerSubmit = event.submitter === submit && performance.now() - submitPressedAt < 1000;
+    submitPressedAt = -Infinity;
+    if (busy || composing || (!pointerSubmit && performance.now() - compositionEnded < 100)) return;
     cancelAutoClose(); busy = true; submit.disabled = true; input.disabled = true;
     try {
       const reply = await window.timerPanel.submit(requestId, input.value);
@@ -94,6 +98,7 @@
   let draftId: string | undefined;
   let scheduleComposing = false;
   let scheduleCompositionEnd = -Infinity;
+  let schedulePressedAt = -Infinity;
   let refreshVersion = 0;
   const scheduleMessage = (text: string, error = false) => {
     scheduleResult.textContent = text; scheduleResult.classList.toggle('error', error);
@@ -146,6 +151,7 @@
   }
   scheduleInput.addEventListener('compositionstart', () => { scheduleComposing = true; cancelAutoClose(); });
   scheduleInput.addEventListener('compositionend', () => { scheduleComposing = false; scheduleCompositionEnd = performance.now(); });
+  previewButton.addEventListener('pointerdown', () => { schedulePressedAt = performance.now(); });
   scheduleInput.addEventListener('input', () => {
     cancelAutoClose(); scheduleId = crypto.randomUUID(); draftId = undefined; confirmation.hidden = true;
     scheduleMessage(''); void window.schedulePanel.discard().catch(() => {});
@@ -155,7 +161,9 @@
   });
   scheduleForm.addEventListener('submit', async event => {
     event.preventDefault();
-    if (scheduleBusy || scheduleComposing || performance.now() - scheduleCompositionEnd < 100) return;
+    const pointerSubmit = event.submitter === previewButton && performance.now() - schedulePressedAt < 1000;
+    schedulePressedAt = -Infinity;
+    if (scheduleBusy || scheduleComposing || (!pointerSubmit && performance.now() - scheduleCompositionEnd < 100)) return;
     cancelAutoClose(); setScheduleBusy(true); confirmation.hidden = true; draftId = undefined;
     try {
       const reply = await window.schedulePanel.preview(scheduleId, scheduleInput.value);

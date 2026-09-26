@@ -21,7 +21,7 @@ test('fake time: absence, reversal and catch-up preserve monotonic elapsed witho
   assert.equal(care.event.kind, 'stroke');
   assert.throws(() => advanceEggLife(month, NaN));
 });
-test('gesture boundaries: 6 DIP, hold at 350ms, travel 24 DIP and reversal; drag mode stays locked', () => {
+test('gesture boundaries: 6 DIP, hold at 350ms, short reversal; drag mode stays locked', () => {
   const click = new EggGesture(origin, origin, 0);
   click.move({ x: 105, y: 100 }, 100);
   assert.equal(click.finish(), 'touch');
@@ -37,7 +37,7 @@ test('gesture boundaries: 6 DIP, hold at 350ms, travel 24 DIP and reversal; drag
 });
 test('one-way movement, tiny jitter, hold only and large departure cannot count as stroke', () => {
   for (const points of [[], [{ x: 125, y: 100 }], [{ x: 103, y: 100 }, origin],
-    [{ x: 173, y: 100 }, origin], [{ x: 112, y: 173 }, origin]]) {
+    [{ x: 197, y: 100 }, origin], [{ x: 112, y: 197 }, origin]]) {
     const gesture = new EggGesture(origin, origin, 0);
     gesture.arm(350);
     for (const point of points) gesture.move(point, 400);

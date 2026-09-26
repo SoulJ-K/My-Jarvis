@@ -59,7 +59,9 @@ app.whenReady().then(async () => {
   const screenshot = path.join(tmpdir(), 'jarvis-hatch-name-failure.png');
   writeFileSync(screenshot, (await win.webContents.capturePage()).toPNG());
   db.exec('DROP TRIGGER fail_name');
-  await run('document.querySelector("form").requestSubmit(); document.querySelector("form").requestSubmit()'); await settle();
+  await run(`(() => { const input=document.querySelector('input'); input.dispatchEvent(new CompositionEvent('compositionstart'));
+    input.dispatchEvent(new CompositionEvent('compositionend')); const button=document.querySelector('form button');
+    button.dispatchEvent(new PointerEvent('pointerdown')); document.querySelector('form').requestSubmit(button); })()`); await settle();
   assert.equal(store.read().name, '별');
   assert.equal(await run('document.querySelector("#hatch").dataset.step'), 'life');
   await run('window.sequence.setAvailable(false); window.sequence.setAvailable(true)');
