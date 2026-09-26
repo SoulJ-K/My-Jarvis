@@ -1,6 +1,6 @@
-import { babyView, validFoodPoint } from '../pet/baby-life';
+import { validFoodPoint } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
-import { BrowserWindow, ipcMain, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { EggSnapshot } from '../shared/pet';
@@ -128,7 +128,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
       }
     }
     if (kind && currentPet().stage === 'baby' && baby) {
-      try { publishBaby(babyView(baby.apply({ type: 'touch' }))); }
+      try { publishBaby(baby.view(baby.apply({ type: 'touch' }))); }
       catch { win.webContents.send('egg:save-failed'); }
       onBabyClick();
     }
@@ -139,26 +139,44 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     cancelGesture();
   };
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
-  const publishBaby = (view: ReturnType<typeof babyView>) => {
+  const publishBaby = (view: ReturnType<BabyLifeRepository['view']>) => {
     if (!win.isDestroyed()) win.webContents.send('baby:state', view);
     return view;
   };
+  let socialSuspended = false;
+  let socialLocked = false;
+  const suspendSocial = () => { socialSuspended = true; tickBaby(); };
+  const resumeSocial = () => { socialSuspended = false; };
+  const lockSocial = () => { socialLocked = true; tickBaby(); };
+  const unlockSocial = () => { socialLocked = false; };
+  powerMonitor.on('suspend', suspendSocial); powerMonitor.on('lock-screen', lockSocial);
+  powerMonitor.on('resume', resumeSocial); powerMonitor.on('unlock-screen', unlockSocial);
   const tickBaby = () => {
     if (!babyReady()) return;
-    try { publishBaby(babyView(baby!.apply({ type: 'tick' }))); }
+    try {
+      const active = win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked && !drag;
+      const cursor = active ? screen.getCursorScreenPoint() : null;
+      const bounds = win.getBounds();
+      const cursorNear = Boolean(cursor && Math.hypot(cursor.x - bounds.x - 90, cursor.y - bounds.y - 120) <= 75);
+      const view = baby!.view(baby!.apply({ type: 'tick', active, cursorNear }));
+      // Direction is transient presentation only; cursor coordinates never enter storage.
+      win.webContents.send('baby:direction', cursor && cursor.x < bounds.x + 90 ? 'left' : 'right');
+      publishBaby(view);
+    }
     catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
   };
   const babyTimer = setInterval(tickBaby, 1000);
+  win.on('hide', tickBaby);
   ipcMain.handle('baby:read', (event, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0) throw new Error('BABY_REQUEST_DENIED');
     if (!babyReady()) return null;
-    return babyView(baby!.apply({ type: 'tick' }));
+    return baby!.view(baby!.apply({ type: 'tick' }));
   });
   ipcMain.handle('baby:feed', (event, ...args: unknown[]) => {
     const [offerId, x, y] = args;
     if (!validSender(event) || !babyReady() || args.length !== 3 || typeof offerId !== 'string' ||
       !/^food:[0-9]{1,16}$/.test(offerId) || !validFoodPoint(x, y)) throw new Error('BABY_REQUEST_DENIED');
-    return publishBaby(babyView(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number })));
+    return publishBaby(baby!.view(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number })));
   });
   ipcMain.on('egg:hover', hover);
   ipcMain.on('egg:drag-start', start);
@@ -175,6 +193,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   });
   win.on('closed', () => {
     clearInterval(babyTimer);
+    powerMonitor.removeListener('suspend', suspendSocial); powerMonitor.removeListener('lock-screen', lockSocial);
+    powerMonitor.removeListener('resume', resumeSocial); powerMonitor.removeListener('unlock-screen', unlockSocial);
     ipcMain.removeHandler('baby:read');
     ipcMain.removeHandler('baby:feed');
     clearArm();

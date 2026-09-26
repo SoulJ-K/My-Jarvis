@@ -50,7 +50,7 @@ app.whenReady().then(async () => {
     writeFileSync(path.join(tmpdir(), `jarvis-baby-${name}.png`), (await win.webContents.capturePage()).toPNG());
   };
   const originalPosition = win.getPosition();
-  assert.deepEqual(await run('Object.keys(window.babyLife).sort()'), ['feed', 'onSaveFailed', 'read', 'subscribe']);
+  assert.deepEqual(await run('Object.keys(window.babyLife).sort()'), ['feed', 'onDirection', 'onSaveFailed', 'read', 'subscribe']);
   const view = await run('window.babyLife.read()');
   const event = trusted!;
   for (const channel of ['baby:read', 'baby:feed']) {

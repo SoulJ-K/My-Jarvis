@@ -32,9 +32,14 @@ contextBridge.exposeInMainWorld('petBrain', {
 
 contextBridge.exposeInMainWorld('babyLife', {
   read: () => ipcRenderer.invoke('baby:read'),
+  onDirection: (listener: (direction: 'left' | 'right') => void) => {
+    const receive = (_event: Electron.IpcRendererEvent, direction: 'left' | 'right') => listener(direction);
+    ipcRenderer.on('baby:direction', receive);
+    return () => ipcRenderer.removeListener('baby:direction', receive);
+  },
   feed: (offerId: string, x: number, y: number) => ipcRenderer.invoke('baby:feed', offerId, x, y),
-  subscribe: (listener: (state: import('../pet/baby-life').BabyView) => void) => {
-    const receive = (_event: Electron.IpcRendererEvent, state: import('../pet/baby-life').BabyView) => listener(state);
+  subscribe: (listener: (state: import('../pet/baby-life').BabyPresentation) => void) => {
+    const receive = (_event: Electron.IpcRendererEvent, state: import('../pet/baby-life').BabyPresentation) => listener(state);
     ipcRenderer.on('baby:state', receive);
     return () => ipcRenderer.removeListener('baby:state', receive);
   },

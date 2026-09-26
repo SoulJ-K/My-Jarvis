@@ -80,7 +80,7 @@
   document.addEventListener('pointerdown', cancelAutoClose);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
   window.timerPanel.onClose(() => { resetSchedule(); cancelAutoClose(); input.value = ''; requestId = crypto.randomUUID(); composing = false; });
-  window.timerPanel.onOpen(() => { cancelAutoClose(); message('“5분 타이머”를 입력하거나 아래 타이머를 확인하세요.'); input.focus(); void refresh(); });
+  window.timerPanel.onOpen(() => { cancelAutoClose(); message('“5분 타이머” 또는 아기에게 “안녕”, “잘했어”, “구슬 놀이”, “그만”을 입력하세요.'); input.focus(); void refresh(); });
   window.timerPanel.subscribe(() => { void refresh(); });
   const scheduleInput = document.querySelector<HTMLInputElement>('#schedule-request')!;
   const scheduleForm = document.querySelector<HTMLFormElement>('#schedule-form')!;

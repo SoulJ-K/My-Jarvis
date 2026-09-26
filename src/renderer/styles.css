@@ -76,3 +76,22 @@ main { position: relative; width: 180px; height: 200px; }
   #egg.baby-idle { transition: none; }
   #egg[data-life] .shell, #food[data-eating=true] span { animation: none; }
 }
+
+/* Temporary shape-only expression; body needs retain their own rendering. */
+#egg[data-life=resting][data-social=away] { transform: translateX(18px); }
+#egg[data-life=resting][data-social=away] .shell { transform: rotate(8deg); }
+#egg[data-life=resting][data-social=near] { transform: translateX(-8px); }
+#egg[data-life=resting][data-social=chase] { transform: translateX(14px); transition-duration: .7s; }
+#egg[data-life=resting][data-social=chase][data-direction=left] { transform: translateX(-14px); }
+#egg[data-life=resting][data-social=bounce] .shell { animation: baby-joy 700ms ease-in-out 2; }
+#egg[data-life=resting][data-social=tilt] .shell { transform: rotate(-6deg); }
+#emotion-orb { position: absolute; left: 76px; top: 40px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #735f38; background: #f6f4ed; pointer-events: none; }
+#emotion-orb[hidden] { display: none; }
+#emotion-orb[data-expression=joy] { background: #ffe083; }
+#emotion-orb[data-play=true] { left: 126px; top: 146px; animation: orb-roll 1.5s ease-in-out infinite alternate; }
+@keyframes baby-joy { 50% { transform: translateY(-5px); } }
+@keyframes orb-roll { to { transform: translateX(-24px) rotate(-100deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #egg[data-life=resting][data-social] .shell, #emotion-orb[data-play=true] { animation: none; }
+  #egg[data-life=resting][data-social=chase] { transition: none; }
+}

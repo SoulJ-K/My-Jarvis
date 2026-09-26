@@ -96,13 +96,13 @@ window.addEventListener('unload', unsubscribeReady, { once: true });
 const food = document.querySelector<HTMLButtonElement>('#food')!;
 const caption = document.querySelector<HTMLParagraphElement>('#life-caption')!;
 let babyRevision = -1;
-let babyState: import('../pet/baby-life').BabyView | null = null;
+let babyState: import('../pet/baby-life').BabyPresentation | null = null;
 let foodPointer: number | undefined;
 let foodStart = { x: 0, y: 0 };
 let foodMoved = false;
 let feeding = false;
 let babySaveFailed = false;
-function renderBaby(state: import('../pet/baby-life').BabyView | null) {
+function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   if (!state || state.revision < babyRevision) return;
   babyRevision = state.revision;
   babyState = state;
@@ -116,7 +116,13 @@ function renderBaby(state: import('../pet/baby-life').BabyView | null) {
   }
   food.dataset.eating = String(state.behavior === 'eating');
   const text = { resting: '', drowsy: '졸려…', sleeping: '새근새근', approaching: '다가가는 중', eating: '냠냠' }[state.behavior];
-  caption.textContent = text;
+  caption.textContent = text || state.social.caption;
+  egg.dataset.social = state.social.motion;
+  const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
+  orb.hidden = !state.social.orb;
+  orb.dataset.orbId = state.social.orb?.id ?? '';
+  orb.dataset.expression = state.social.orb?.expression ?? 'quiet';
+  orb.dataset.play = String(state.social.motion === 'play-orb');
   if (babySaveFailed) { document.querySelector('#save-status')!.textContent = ''; babySaveFailed = false; }
 }
 function showBabyFailure() {
@@ -166,3 +172,6 @@ food.addEventListener('pointercancel', cancelFood);
 food.addEventListener('lostpointercapture', cancelFood);
 window.addEventListener('blur', cancelFood);
 food.addEventListener('click', event => { if (event.detail === 0) void placeFood(116, 146); });
+
+const unsubscribeDirection = window.babyLife.onDirection(direction => { egg.dataset.direction = direction; });
+window.addEventListener('unload', unsubscribeDirection, { once: true });
