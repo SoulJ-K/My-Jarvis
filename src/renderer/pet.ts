@@ -17,6 +17,8 @@ function renderBrain(state: import('../shared/pet-state').EggSnapshot) {
   lastRevision = state.revision;
   egg.dataset.behavior = state.behavior;
   egg.classList.toggle('reacting', state.behavior === 'reacting');
+  egg.classList.toggle('soothed', state.behavior === 'soothed');
+  if (state.behavior !== 'idle') document.querySelector('#save-status')!.textContent = '';
 }
 const unsubscribeBrain = window.petBrain.subscribe(renderBrain);
 void window.petBrain.read().then(renderBrain).catch(() => {
@@ -33,7 +35,9 @@ function syncHover(x: number, y: number) {
 }
 
 window.addEventListener('pointermove', event => {
-  if (activePointer !== undefined) window.petWindow.moveDrag();
+  if (activePointer !== undefined) {
+    if (event.pointerId === activePointer) window.petWindow.moveDrag();
+  }
   else syncHover(event.clientX, event.clientY);
 });
 document.documentElement.addEventListener('pointerleave', () => {
@@ -53,7 +57,7 @@ egg.addEventListener('pointerup', async event => {
   if (event.pointerId !== activePointer) return;
   activePointer = undefined;
   egg.releasePointerCapture(event.pointerId);
-  egg.classList.remove('pressed');
+  egg.classList.remove('pressed', 'stroking');
   await window.petWindow.endDrag();
   // Main resets click-through after each gesture; force the current hover to resync.
   hovering = false;
@@ -62,7 +66,7 @@ egg.addEventListener('pointerup', async event => {
 function cancelGesture() {
   if (activePointer === undefined) return;
   activePointer = undefined;
-  egg.classList.remove('pressed');
+  egg.classList.remove('pressed', 'stroking');
   hovering = false;
   window.petWindow.cancelDrag();
 }
@@ -70,3 +74,13 @@ egg.addEventListener('pointercancel', cancelGesture);
 egg.addEventListener('lostpointercapture', cancelGesture);
 window.addEventListener('blur', cancelGesture);
 window.addEventListener('contextmenu', event => event.preventDefault());
+
+const unsubscribeSave = window.petWindow.onSaveFailed(() => {
+  document.querySelector('#save-status')!.textContent = '돌봄을 저장하지 못했어요. 다시 시도해 주세요.';
+});
+window.addEventListener('unload', unsubscribeSave, { once: true });
+
+const unsubscribeReady = window.petWindow.onStrokeReady(() => {
+  if (activePointer !== undefined) egg.classList.add('stroking');
+});
+window.addEventListener('unload', unsubscribeReady, { once: true });

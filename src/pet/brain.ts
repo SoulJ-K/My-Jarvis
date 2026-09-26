@@ -18,10 +18,10 @@ export class EggBrain {
     return { ...this.state };
   }
 
-  touch(): void {
+  touch(kind: 'touch' | 'stroke' = 'touch'): void {
     // Finish the current reaction rather than queueing or extending repeated clicks.
-    if (this.disposed || this.state.behavior === 'reacting') return;
-    this.state = { behavior: 'reacting', revision: this.state.revision + 1 };
+    if (this.disposed || this.state.behavior !== 'idle') return;
+    this.state = { behavior: kind === 'stroke' ? 'soothed' : 'reacting', revision: this.state.revision + 1 };
     this.cancelReaction = this.clock.after(EGG_REACTION_MS, () => {
       this.cancelReaction = undefined;
       if (this.disposed) return;

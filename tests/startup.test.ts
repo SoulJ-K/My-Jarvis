@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 
 function workspace(t: test.TestContext) {
@@ -34,7 +35,7 @@ function launch(directory: string, mode = 'once') {
     child.once('error', reject);
     child.once('close', code => {
       clearTimeout(timer);
-      rejectReady(new Error(`Exited before ready (${code})`));
+      rejectReady(new Error(`Exited before ready (${code}): ${stderr}`));
       resolve({ code, stdout, stderr });
     });
   });
@@ -133,12 +134,14 @@ test('combined app: create → real page click → reaction → reload → rest 
   const identity = checkExercise(await first.ready as ExercisedEgg);
   assert.equal((await first.closed).code, 0);
   assert.deepEqual(loadOrCreateEgg(directory), identity);
-  const before = readFileSync(petDatabasePath(directory));
   const second = launch(directory, 'exercise');
   checkExercise(await second.ready as ExercisedEgg, identity);
   assert.equal((await second.closed).code, 0);
-  // Temporary reactions must not become persistent identity or experience records.
-  assert.deepEqual(readFileSync(petDatabasePath(directory)), before);
+  // Care is durable; transient presentation state is not stored.
+  const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+  assert.equal(db.prepare('SELECT count(*) AS n FROM egg_care').get()?.n, 2);
+  assert.deepEqual(db.prepare('SELECT DISTINCT kind FROM egg_care').all().map(row => row.kind), ['touch']);
+  db.close();
 });
 
 test('combined app: killed during reaction restores same egg at rest and accepts another page click', async t => {
@@ -154,5 +157,26 @@ test('combined app: killed during reaction restores same egg at rest and accepts
     checkExercise(await second.ready as ExercisedEgg, identity);
     assert.equal((await second.closed).code, 0);
     assert.deepEqual(loadOrCreateEgg(directory), identity);
+    const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+    assert.equal(db.prepare('SELECT count(*) AS n FROM egg_care').get()?.n, 2);
+    db.close();
   } finally { if (first.child.exitCode === null) first.child.kill('SIGKILL'); }
+});
+
+test('care app: mouse hold/stroke vs move, cancel, departure, reload, write failure and restart', async t => {
+  const directory = workspace(t);
+  const first = launch(directory, 'care');
+  const result = await first.ready as { snapshot: unknown; exercise: { kinds: string[]; life: { elapsed_ms: number }; state: { behavior: string } } };
+  assert.equal((await first.closed).code, 0);
+  assert.deepEqual(result.exercise.kinds, ['stroke', 'touch']);
+  assert.equal(result.exercise.state.behavior, 'idle');
+  const second = launch(directory);
+  const restored = await second.ready as { snapshot: unknown; state: { behavior: string } };
+  assert.equal((await second.closed).code, 0);
+  assert.deepEqual(restored.snapshot, result.snapshot);
+  assert.equal(restored.state.behavior, 'idle');
+  const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+  assert.deepEqual(db.prepare('SELECT kind FROM egg_care ORDER BY id').all().map(row => row.kind), ['stroke', 'touch']);
+  assert.ok(Number(db.prepare('SELECT elapsed_ms FROM egg_life').get()?.elapsed_ms) >= result.exercise.life.elapsed_ms);
+  db.close();
 });
