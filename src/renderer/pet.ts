@@ -107,6 +107,10 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   babyRevision = state.revision;
   babyState = state;
   egg.dataset.life = state.behavior;
+  egg.dataset.dayPeriod = state.dayPeriod;
+  // Sleeping/eating and requests for space take priority; no queued greeting.
+  const reunion = Boolean(state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
+  egg.dataset.reunion = String(reunion);
   egg.style.setProperty('--baby-step', state.meal ? `${Math.max(-20, Math.min(20, state.meal.x - 90))}px` : '0px');
   if (foodPointer === undefined) {
     food.hidden = !state.offerId && !state.meal;
@@ -116,7 +120,7 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   }
   food.dataset.eating = String(state.behavior === 'eating');
   const text = { resting: '', drowsy: '졸려…', sleeping: '새근새근', approaching: '다가가는 중', eating: '냠냠' }[state.behavior];
-  caption.textContent = text || state.social.caption;
+  caption.textContent = reunion ? (state.behavior === 'drowsy' ? '왔어…?' : '왔어!') : text || state.social.caption;
   egg.dataset.social = state.social.motion;
   const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
   orb.hidden = !state.social.orb;
