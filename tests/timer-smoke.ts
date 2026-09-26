@@ -78,7 +78,6 @@ app.whenReady().then(async () => {
   assert.equal(service.views().length,0);
   console.log('PASS: Electron input/open/Escape, composition guards, durable submit, sender validation, failed OS delivery + visible app inbox, no timer focus takeover');
   console.log('SCREENSHOT:'+screenshot);
-  // Real platform notification call: report the observed outcome without equating it with human visibility.
   // A second successful form registration closes automatically if no new interaction occurs.
   panels.open();
   await run(`document.querySelector('#request').value='5분 타이머'; document.querySelector('form').requestSubmit()`);
@@ -95,12 +94,17 @@ app.whenReady().then(async () => {
   assert.equal(await run('document.querySelector("#request").value'),'');
   assert.equal(service.views().length,1); // Closing the draft is not cancellation of a saved timer.
   console.log('PASS: successful result auto-closes; native window close discards draft, preserves saved timer');
-  const notifications = timerNotifications(message => {
-    // Platform diagnostic only; no timer text, private data or error object serialization.
-    console.log('SYSTEM_NOTIFICATION_FAILURE_REASON:'+message);
-  });
-  const outcome = await new Promise<string>(resolve => notifications.notify(resolve));
-  console.log('SYSTEM_NOTIFICATION_OBSERVED:'+outcome);
-  notifications.dispose(); typing.destroy(); panels.dispose(); service.dispose(); schedules.dispose();
+  // Native notification checks are opt-in; ordinary regression runs must not
+  // request permissions or send an actual notification to the user's desktop.
+  if (process.env.JARVIS_NATIVE_NOTIFICATION_TEST === '1') {
+    const notifications = timerNotifications(message => {
+      // Platform diagnostic only; no timer text, private data or error object serialization.
+      console.log('SYSTEM_NOTIFICATION_FAILURE_REASON:'+message);
+    });
+    const outcome = await new Promise<string>(resolve => notifications.notify(resolve));
+    console.log('SYSTEM_NOTIFICATION_OBSERVED:'+outcome);
+    notifications.dispose();
+  }
+  typing.destroy(); panels.dispose(); service.dispose(); schedules.dispose();
   clearTimeout(timeout); rmSync(directory,{recursive:true,force:true}); app.quit();
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });

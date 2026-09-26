@@ -8,11 +8,12 @@ export class EggGesture {
   private travel = 0;
   private reversed = false;
   private outside = false;
-  constructor(readonly cursor: Point, readonly origin: Point, private startedAt: number) {
+  constructor(readonly cursor: Point, readonly origin: Point, private startedAt: number,
+    private allowStroke = true) {
     this.lastX = cursor.x;
   }
   arm(now: number): boolean {
-    if (!this.moved && now - this.startedAt >= 350) this.stroking = true;
+    if (this.allowStroke && !this.moved && now - this.startedAt >= 350) this.stroking = true;
     return this.stroking;
   }
   move(cursor: Point, now: number): void {

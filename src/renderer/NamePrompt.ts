@@ -9,15 +9,19 @@ namespace JarvisHatch {
     private disposed = false;
     private composing = false;
     private compositionEnded = -Infinity;
-    constructor(save: (name: string) => Promise<void>) {
+    constructor(save: (name: string) => Promise<void>, draft = '') {
       const label = document.createElement('label');
       label.textContent = '어떤 이름으로 불러 줄까요?';
       this.input.name = 'pet-name'; this.input.autocomplete = 'off';
+      this.input.value = draft;
       this.input.setAttribute('aria-label', label.textContent);
+      const hint = document.createElement('p'); hint.id = 'name-hint';
+      hint.textContent = '앞뒤 공백을 빼고 1~20자로 지어 주세요.';
+      this.input.setAttribute('aria-describedby', hint.id);
       label.append(this.input);
       this.button.type = 'submit'; this.button.textContent = '이 이름으로 부르기';
       this.error.setAttribute('role', 'alert');
-      this.element.append(label, this.error, this.button);
+      this.element.append(label, hint, this.error, this.button);
       this.input.addEventListener('compositionstart', () => { this.composing = true; });
       this.input.addEventListener('compositionend', () => { this.composing = false; this.compositionEnded = performance.now(); });
       this.input.addEventListener('keydown', event => {
@@ -32,8 +36,8 @@ namespace JarvisHatch {
         try { await save(this.input.value); }
         catch (error) {
           if (!this.disposed) {
-            this.error.textContent = error instanceof Error && error.message === 'INVALID_NAME'
-              ? '이 이름은 저장할 수 없어요. 이름을 확인해 주세요.'
+            this.error.textContent = error instanceof Error && error.message.includes('INVALID_NAME')
+              ? '앞뒤 공백을 빼고 1~20자로 지어 주세요. 줄바꿈은 넣을 수 없어요.'
               : '이름을 저장하지 못했어요. 입력한 이름은 그대로 있으니 다시 시도해 주세요.';
           }
         } finally {
@@ -47,6 +51,7 @@ namespace JarvisHatch {
       });
     }
     focus(): void { this.input.focus(); }
+    get value(): string { return this.input.value; }
     dispose(): void { this.disposed = true; this.element.remove(); }
   }
 }

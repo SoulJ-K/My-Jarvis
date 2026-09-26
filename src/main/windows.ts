@@ -22,11 +22,12 @@ export function initialPosition() {
   return clampPosition({ x: area.x + area.width - WIDTH - 48, y: area.y + area.height - HEIGHT - 32 }, area);
 }
 
-export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {}) {
+export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
+  currentPet: () => EggSnapshot & { name?: string | null } = () => pet) {
   const page = path.join(__dirname, '../renderer/index.html');
   const win = new BrowserWindow({
     ...initialPosition(), width: WIDTH, height: HEIGHT,
-    title: 'Jarvis Pet · 임시 알',
+    title: pet.stage === 'baby' ? 'Jarvis Pet · 아기' : 'Jarvis Pet · 임시 알',
     // focusable:false alone does not prevent macOS from activating the app on click.
     // A non-activating panel keeps the current app active while the egg receives mouse events.
     ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
@@ -90,9 +91,9 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const start = (event: IpcMainEvent, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0 || drag) return;
     const [x, y] = win.getPosition();
-    drag = new EggGesture(screen.getCursorScreenPoint(), { x, y }, performance.now());
+    drag = new EggGesture(screen.getCursorScreenPoint(), { x, y }, performance.now(), currentPet().stage === 'egg');
     armTimer = setTimeout(() => {
-      if (drag?.arm(performance.now())) win.webContents.send('egg:stroke-ready');
+      if (currentPet().stage === 'egg' && drag?.arm(performance.now())) win.webContents.send('egg:stroke-ready');
     }, 355);
     setInteractive(true);
   };
@@ -116,7 +117,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     const kind = drag?.finish();
     drag = undefined;
     setInteractive(false);
-    if (kind && brain.snapshot().behavior === 'idle') {
+    if (kind && currentPet().stage === 'egg' && brain.snapshot().behavior === 'idle') {
       try {
         care(kind); // Commit before acknowledging; failures cannot look like saved care.
         brain.touch(kind);
@@ -141,7 +142,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   ipcMain.on('egg:drag-cancel', cancel);
   ipcMain.handle('egg:snapshot', (event, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0) throw new Error('EGG_REQUEST_DENIED');
-    return { petId: pet.petId, createdAt: pet.createdAt, stage: pet.stage };
+    return currentPet();
   });
   win.on('closed', () => {
     clearArm();
