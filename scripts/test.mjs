@@ -4,6 +4,8 @@ import electron from 'electron';
 // Use Electron's bundled Node for SQLite tests, not the shell's Node installation.
 for (const [args, asNode] of [
   [['--test', 'dist/tests/brain.test.js', 'dist/tests/egg-life.test.js'], true],
+  [['--test', 'dist/tests/lifecycle.test.js'], true],
+  [['--test', 'dist/tests/three-way-integration.test.js'], true],
   [['--test', 'dist/tests/timer.test.js'], true],
   [['--test', 'dist/tests/reminders.test.js'], true],
   [['--test', 'dist/tests/schedule-restart.test.js'], true],
@@ -12,6 +14,8 @@ for (const [args, asNode] of [
   [['--test', 'dist/tests/startup.test.js'], true],
   [['dist/tests/egg-smoke.js'], false],
   [['dist/tests/window-behavior.js'], false],
+  [['dist/tests/hatch-smoke.js'], false],
+  [['dist/tests/notifications-checks.js'], false],
   [['dist/tests/timer-smoke.js'], false],
   [['dist/tests/schedule-smoke.js'], false],
 ]) {

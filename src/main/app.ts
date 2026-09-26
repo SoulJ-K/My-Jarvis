@@ -5,7 +5,7 @@ import { TimerRepository } from '../storage/timer-repository';
 import { TimerService } from '../assistant/timer';
 import { ReminderService, type NotifySchedule } from '../assistant/reminders';
 import { ScheduleRepository } from '../storage/schedule-repository';
-import { timerNotifications } from './notifications';
+import { scheduleNotifications, timerNotifications } from './notifications';
 import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 
@@ -50,6 +50,8 @@ export function startJarvis(options: {
     win = await createPetWindow(pet, show, kind => life.care(kind));
     win.on('closed', () => app.quit());
     const notifications = timerNotifications();
+    // Hidden automated runs never request macOS notification permission.
+    const scheduleNotices = show && !options.notifySchedule ? scheduleNotifications() : undefined;
     let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
     let service: TimerService | undefined;
     let schedules: ReminderService | undefined;
@@ -59,7 +61,7 @@ export function startJarvis(options: {
         () => panels?.refresh());
       try {
         schedules = new ReminderService(new ScheduleRepository(app.getPath('userData')), () => Date.now(),
-          options.notifySchedule, () => panels?.refresh());
+          options.notifySchedule ?? scheduleNotices?.notify, () => panels?.refresh());
       } catch {
         console.error('알람 저장소 오류: SCHEDULE_STORAGE_FAILED');
         if (show) dialog.showErrorBox('알람을 열지 못했습니다', '알람 저장소를 읽지 못했습니다. 기존 파일과 타이머·알은 보존합니다.');
@@ -74,10 +76,10 @@ export function startJarvis(options: {
       powerMonitor.on('suspend', suspend);
       powerMonitor.on('resume', resume);
       powerMonitor.on('resume', scheduleTick);
-      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); powerMonitor.removeListener('resume', scheduleTick); notifications.dispose(); panels?.dispose(); timerService.dispose(); schedules?.dispose(); };
+      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); powerMonitor.removeListener('resume', scheduleTick); notifications.dispose(); scheduleNotices?.dispose(); panels?.dispose(); timerService.dispose(); schedules?.dispose(); };
       panels.refresh();
     } catch {
-      notifications.dispose(); service?.dispose(); schedules?.dispose();
+      notifications.dispose(); scheduleNotices?.dispose(); service?.dispose(); schedules?.dispose();
       console.error('타이머를 열지 못했습니다: TIMER_STORAGE_FAILED');
       if (show) dialog.showErrorBox('타이머를 열지 못했습니다', '타이머 저장소를 읽지 못해 입력 기능을 멈췄습니다. 기존 파일과 알은 보존합니다.');
     }
