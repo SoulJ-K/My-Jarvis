@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
-import { startJarvis } from '../../src/main/index';
+const lifecycle = require('../../src/main/app') as typeof import('../../src/main/app');
+const startJarvis = lifecycle.startJarvis;
 
 // Only this test entry point accepts an alternate store. Production has no such switch.
 const [directory, mode] = process.argv.slice(2);
@@ -33,7 +34,8 @@ async function clickEgg(win: BrowserWindow) {
   return inspect(win);
 }
 
-startJarvis({
+// Exercise the production entry; override only test presentation/callbacks.
+lifecycle.startJarvis = () => startJarvis({
   show: false,
   onReady: async win => {
     const initial = await inspect(win);
@@ -66,4 +68,5 @@ startJarvis({
   },
   onFailure: code => console.log(`TEST_FAILURE:${JSON.stringify({ code, windows: BrowserWindow.getAllWindows().length })}`),
 });
+require('../../src/main/index');
 process.on('SIGTERM', () => { clearTimeout(timeout); app.quit(); });
