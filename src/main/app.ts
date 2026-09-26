@@ -3,6 +3,8 @@ import { openEggLife } from '../storage/egg-life-repository';
 import { createPetWindow, initialPosition } from './windows';
 import { TimerRepository } from '../storage/timer-repository';
 import { TimerService } from '../assistant/timer';
+import { ReminderService, type NotifySchedule } from '../assistant/reminders';
+import { ScheduleRepository } from '../storage/schedule-repository';
 import { timerNotifications } from './notifications';
 import { createPromptWindows } from './prompt-window';
 import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
@@ -11,6 +13,7 @@ import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 // No test settings or storage paths are exposed to the renderer.
 export function startJarvis(options: {
   show?: boolean;
+  notifySchedule?: NotifySchedule;
   onReady?: (win: BrowserWindow) => Promise<void>;
   onFailure?: (code: string) => void;
 } = {}): void {
@@ -49,22 +52,32 @@ export function startJarvis(options: {
     const notifications = timerNotifications();
     let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
     let service: TimerService | undefined;
+    let schedules: ReminderService | undefined;
     try {
       service = new TimerService(new TimerRepository(app.getPath('userData')),
         { wall: () => Date.now(), monotonic: () => performance.now() }, notifications.notify,
         () => panels?.refresh());
-      panels = await createPromptWindows(service, show);
+      try {
+        schedules = new ReminderService(new ScheduleRepository(app.getPath('userData')), () => Date.now(),
+          options.notifySchedule, () => panels?.refresh());
+      } catch {
+        console.error('알람 저장소 오류: SCHEDULE_STORAGE_FAILED');
+        if (show) dialog.showErrorBox('알람을 열지 못했습니다', '알람 저장소를 읽지 못했습니다. 기존 파일과 타이머·알은 보존합니다.');
+      }
+      panels = await createPromptWindows(service, show, schedules);
       const timerService = service;
       const tick = () => { try { timerService.tick(); } catch { console.error('타이머 저장 오류: TIMER_TICK_FAILED'); } };
-      const interval = setInterval(tick, 500);
+      const scheduleTick = () => { try { schedules?.tick(); } catch { console.error('알람 저장 오류: SCHEDULE_TICK_FAILED'); } };
+      const interval = setInterval(() => { tick(); scheduleTick(); }, 500);
       const resume = () => { try { timerService.resume(); } catch { console.error('타이머 복원 오류: TIMER_RESUME_FAILED'); } };
       const suspend = () => timerService.suspend();
       powerMonitor.on('suspend', suspend);
       powerMonitor.on('resume', resume);
-      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); notifications.dispose(); panels?.dispose(); timerService.dispose(); };
+      powerMonitor.on('resume', scheduleTick);
+      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); powerMonitor.removeListener('resume', scheduleTick); notifications.dispose(); panels?.dispose(); timerService.dispose(); schedules?.dispose(); };
       panels.refresh();
     } catch {
-      notifications.dispose(); service?.dispose();
+      notifications.dispose(); service?.dispose(); schedules?.dispose();
       console.error('타이머를 열지 못했습니다: TIMER_STORAGE_FAILED');
       if (show) dialog.showErrorBox('타이머를 열지 못했습니다', '타이머 저장소를 읽지 못해 입력 기능을 멈췄습니다. 기존 파일과 알은 보존합니다.');
     }

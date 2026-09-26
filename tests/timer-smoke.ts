@@ -5,6 +5,8 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { TimerRepository } from '../src/storage/timer-repository';
 import { TimerService } from '../src/assistant/timer';
+import { ReminderService } from '../src/assistant/reminders';
+import { ScheduleRepository } from '../src/storage/schedule-repository';
 import { createPromptWindows } from '../src/main/prompt-window';
 import { timerNotifications } from '../src/main/notifications';
 const directory = mkdtempSync(path.join(tmpdir(),'jarvis-timer-smoke-'));
@@ -23,7 +25,8 @@ app.whenReady().then(async () => {
     if (channel === 'timer:submit') { submitHandler = listener; register(channel,(event,...args) => { submitEvent = event; return listener(event,...args); }); }
     else register(channel,listener);
   };
-  panels = await createPromptWindows(service);
+  const schedules = new ReminderService(new ScheduleRepository(directory), () => now, undefined, () => panels?.refresh());
+  panels = await createPromptWindows(service, true, schedules);
   ipcMain.handle = register;
   const run = (code: string) => panels.prompt.webContents.executeJavaScript(code);
   assert.equal(panels.prompt.isVisible(),false);
@@ -98,6 +101,6 @@ app.whenReady().then(async () => {
   });
   const outcome = await new Promise<string>(resolve => notifications.notify(resolve));
   console.log('SYSTEM_NOTIFICATION_OBSERVED:'+outcome);
-  notifications.dispose(); typing.destroy(); panels.dispose(); service.dispose();
+  notifications.dispose(); typing.destroy(); panels.dispose(); service.dispose(); schedules.dispose();
   clearTimeout(timeout); rmSync(directory,{recursive:true,force:true}); app.quit();
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });
