@@ -39,8 +39,8 @@ test('one local pet keeps care, timer and reminder through hatch and restart', t
   assert.equal(schedules.confirm('reminder-one').ok, true);
   schedules.dispose();
 
-  // The product hatch trigger is still undecided. This explicit test trigger
-  // checks coexistence without enabling automatic hatch in the app.
+  // Keep the explicit test seed for this coexistence check; product readiness
+  // and its approved elapsed/care policy are covered separately.
   const lifecycle = new LifecycleRepository(directory, {
     namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true,
   });
