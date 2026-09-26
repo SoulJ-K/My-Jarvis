@@ -7,6 +7,7 @@ for (const [args, asNode] of [
   [['--test', 'dist/tests/storage.test.js'], true],
   [['--test', 'dist/tests/startup.test.js'], true],
   [['dist/tests/egg-smoke.js'], false],
+  [['dist/tests/window-behavior.js'], false],
 ]) {
   const env = { ...process.env };
   if (asNode) env.ELECTRON_RUN_AS_NODE = '1';
