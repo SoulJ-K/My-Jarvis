@@ -12,7 +12,12 @@ app.setName('Jarvis Pet Smoke Test');
 app.on('window-all-closed', () => {});
 const testData = mkdtempSync(path.join(tmpdir(), 'jarvis-egg-smoke-'));
 app.setPath('userData', testData);
-app.on('quit', () => rmSync(testData, { recursive: true, force: true }));
+app.on('quit', () => {
+  // Chromium may still be finishing cache writes during quit. Cleanup failure
+  // must stay a reported test warning, never an uncaught native error dialog.
+  try { rmSync(testData, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch { console.warn('WARN: temporary test directory cleanup incomplete; retained for later cleanup.'); }
+});
 const timeout = setTimeout(() => {
   console.error('FAIL: 알 창 검사 시간 초과');
   app.exit(1);

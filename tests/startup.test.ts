@@ -4,11 +4,57 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
+
+test('temporary smoke cleanup reports busy-directory failures without uncaught dialogs', () => {
+  for (const filename of ['baby-social-smoke.js', 'baby-smoke.js', 'egg-smoke.js']) {
+    let quit: (() => void) | undefined;
+    let removalFails = true;
+    const warnings: string[] = [];
+    const removals: Array<{ target: string; recursive: boolean; force: boolean; maxRetries: number }> = [];
+    const reachedRegistration = new Error('QUIT_HANDLER_CAPTURED');
+    const isolatedDirectory = path.join(tmpdir(), 'jarvis-cleanup-fake');
+    const fakeApp = {
+      setName() {}, setPath() {},
+      on(event: string, callback: () => void) {
+        if (event === 'quit') { quit = callback; throw reachedRegistration; }
+      },
+    };
+    // Evaluate the real compiled entry only as far as its quit registration.
+    // No Electron app, window, database or real temporary directory is created.
+    assert.throws(() => runInNewContext(readFileSync(path.join(__dirname, filename), 'utf8'), {
+      exports: {}, console: { warn: (message: string) => warnings.push(message) },
+      require(name: string) {
+        if (name === 'electron') return { app: fakeApp };
+        if (name === 'node:path') return path;
+        if (name === 'node:os') return { tmpdir };
+        if (name === 'node:fs') return {
+          mkdtempSync: () => isolatedDirectory,
+          rmSync(target: string, options: { recursive: boolean; force: boolean; maxRetries: number }) {
+            removals.push({ target, recursive: options.recursive, force: options.force, maxRetries: options.maxRetries });
+            if (removalFails) throw Object.assign(new Error('Directory not empty'), { code: 'ENOTEMPTY' });
+          },
+        };
+        return {};
+      },
+    }), error => error === reachedRegistration);
+    assert.ok(quit);
+    assert.doesNotThrow(quit);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /cleanup incomplete/);
+    removalFails = false;
+    assert.doesNotThrow(quit);
+    assert.equal(warnings.length, 1, 'successful cleanup adds no warning');
+    assert.equal(removals.length, 2);
+    for (const removal of removals) assert.deepEqual(removal,
+      { target: isolatedDirectory, recursive: true, force: true, maxRetries: 3 });
+  }
+});
 
 function workspace(t: test.TestContext) {
   const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-startup-'));

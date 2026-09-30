@@ -13,7 +13,12 @@ import { createPetWindow } from '../src/main/windows';
 const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-baby-smoke-'));
 app.setPath('userData', directory);
 app.on('window-all-closed', () => {});
-app.on('quit', () => rmSync(directory, { recursive: true, force: true }));
+app.on('quit', () => {
+  // Chromium may still be finishing cache writes during quit. Cleanup failure
+  // must stay a reported test warning, never an uncaught native error dialog.
+  try { rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch { console.warn('WARN: temporary test directory cleanup incomplete; retained for later cleanup.'); }
+});
 const timeout = setTimeout(() => app.exit(2), 30000);
 const pause = () => new Promise(resolve => setTimeout(resolve, 20));
 async function until(check: () => Promise<boolean>) {

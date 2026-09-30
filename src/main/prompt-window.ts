@@ -122,7 +122,14 @@ export async function createPromptWindows(service: TimerService, showNotices = t
   };
   return {
     prompt, notice, refresh,
-    open() { prompt.show(); prompt.focus(); prompt.webContents.send('prompt:opened'); refresh(); },
+    open() {
+      const opening = !prompt.isVisible();
+      if (!opening && prompt.isFocused()) return;
+      // A window behind another app is still "visible". Bring the same panel
+      // forward without replaying opening UI or disturbing an existing draft.
+      prompt.show(); prompt.focus();
+      if (opening) { prompt.webContents.send('prompt:opened'); refresh(); }
+    },
     dispose() {
       disposed = true; clearTimeout(hideNotice);
       for (const channel of handlers) ipcMain.removeHandler(channel);

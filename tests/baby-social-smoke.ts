@@ -11,7 +11,12 @@ import { SOCIAL_TIMING as T } from '../src/pet/baby-social';
 import { petDatabasePath } from '../src/storage/pet-repository';
 const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-social-ui-'));
 app.setPath('userData', directory);
-app.on('quit', () => rmSync(directory, { recursive: true, force: true }));
+app.on('quit', () => {
+  // Chromium may still be finishing cache writes during quit. Cleanup failure
+  // must stay a reported test warning, never an uncaught native error dialog.
+  try { rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch { console.warn('WARN: temporary test directory cleanup incomplete; retained for later cleanup.'); }
+});
 let now = 1_000_000;
 Date.now = () => now;
 const lifecycle = new LifecycleRepository(directory, { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true });
@@ -117,9 +122,14 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     // A press is visual feedback; only the completed, unmoved gesture is contact.
     let opens = 0;
     let promptVisible = false;
+    let promptFocused = false;
     prompt.show = () => { opens++; promptVisible = true; };
-    prompt.focus = () => {};
+    prompt.focus = () => { promptFocused = true; };
     prompt.isVisible = () => promptVisible;
+    prompt.isFocused = () => promptFocused;
+    prompt.blur = () => { promptFocused = false; };
+    prompt.hide = () => { promptVisible = false; };
+    await run('window.openSignals = 0; void window.timerPanel.onOpen(() => { window.openSignals++; })');
     const touches = () => JSON.parse(String(db.prepare('SELECT snapshot FROM baby_social').get()!.snapshot)).touches as number;
     now += T.touchWindow + 1;
     await until(() => Promise.resolve(touches() === 0));
@@ -150,6 +160,26 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal(await pet('window.petWindow.endDrag()'), true);
     assert.equal(touches(), 3, 'dragging the baby is not another contact');
     assert.equal(count(), experiencesBeforeClicks + 1);
+    // A panel behind another app is still visible to Electron. Re-focus it
+    // without replaying the opening event or changing the draft/caret.
+    await run(`document.querySelector('#request').value='작성 중인 부탁';
+      document.querySelector('#request').focus(); document.querySelector('#request').setSelectionRange(1, 3)`);
+    const openingSignals = await run('window.openSignals');
+    promptFocused = false;
+    await clickPet(3);
+    await pause();
+    assert.equal(promptFocused, true, 'pet click brings a visible but unfocused prompt forward');
+    assert.equal(opens, 2);
+    assert.equal(await run('window.openSignals'), openingSignals);
+    assert.deepEqual(await run(`(() => { const input=document.querySelector('#request');
+      return [input.value, input.selectionStart, input.selectionEnd]; })()`), ['작성 중인 부탁', 1, 3]);
+    await run('window.timerPanel.close()');
+    await until(() => run('document.querySelector("#request").value === ""'));
+    await clickPet(3);
+    await until(() => run(`window.openSignals === ${openingSignals + 1}`));
+    assert.equal(opens, 3, 'explicitly closed prompt can be opened again');
+    assert.equal(promptVisible, true);
+    assert.equal(promptFocused, true);
     db.close(); clearTimeout(timeout);
     console.log('PASS: production baby input/IME, exact grammar, minimal experience, failed save/retry, IPC sender/frame/arguments, same orb, cursor departure, orb/stop, space/recovery, timer independence, screenshots');
     app.quit();
