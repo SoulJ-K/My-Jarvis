@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { TimerRepository, timerDatabasePath } from '../src/storage/timer-repository';
@@ -94,4 +95,129 @@ test('wall edit before a reported suspend does not shorten a running timer', t =
   f.service.suspend(); f.wall(120000); f.service.resume();
   assert.equal(f.deliveries,0); assert.equal(f.service.views()[0].remainingMs,180000);
   f.advance(180000); f.service.tick(); assert.equal(f.deliveries,1);
+});
+
+test('prompt countdown follows its deadline and cancels with its saved result intact', async () => {
+  type Handler = (event?: Record<string, unknown>) => unknown;
+  class Element {
+    value = ''; textContent = ''; hidden = false; disabled = false;
+    private listeners = new Map<string, Handler[]>();
+    classList = { toggle: () => {} };
+    addEventListener(name: string, handler: Handler) {
+      this.listeners.set(name, [...(this.listeners.get(name) ?? []), handler]);
+    }
+    async emit(name: string, event: Record<string, unknown> = {}) {
+      await Promise.all((this.listeners.get(name) ?? []).map(handler => handler(event)));
+    }
+    setAttribute(_name: string, _value: string) {}
+    focus() {}
+    replaceChildren() { this.textContent = ''; }
+    append(..._children: Element[]) {}
+  }
+  const elements = new Map<string, Element>();
+  const find = (selector: string) => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector)!;
+  };
+  const document = new Element() as Element & {
+    querySelector: (selector: string) => Element;
+    createElement: () => Element;
+    hidden: boolean;
+  };
+  document.querySelector = find;
+  document.createElement = () => new Element();
+  document.hidden = false;
+  let now = 0, nextTimer = 0, closes = 0, nextId = 0;
+  const timers = new Map<number, { due: number; callback: () => void }>();
+  const setFakeTimeout = (callback: () => void, delay: number) => {
+    const id = ++nextTimer;
+    timers.set(id, { due: now + delay, callback });
+    return id;
+  };
+  const advance = (milliseconds: number) => {
+    now += milliseconds;
+    for (const [id, timer] of [...timers]) {
+      if (timer.due <= now) { timers.delete(id); timer.callback(); }
+    }
+  };
+  let onClose = () => {}, onOpen = () => {};
+  const window = {
+    timerPanel: {
+      read: async () => [], submit: async () => ({ ok: true, message: '저장했습니다.' }),
+      close: async () => { closes++; onClose(); },
+      onClose: (handler: () => void) => { onClose = handler; },
+      onOpen: (handler: () => void) => { onOpen = handler; },
+      subscribe: () => {},
+    },
+    schedulePanel: {
+      read: async () => [], discard: async () => {}, subscribe: () => {},
+      preview: async () => ({ ok: true, message: '저장 전 확인해 주세요.', draft: {
+        id: 'draft', kind: 'alarm', localDateTime: '2026-10-01T09:00', timeZone: 'Asia/Seoul',
+        utcOffsetMinutes: 540, content: '확인',
+      } }),
+    },
+  };
+  runInNewContext(readFileSync(path.join(__dirname, '../src/renderer/prompt.js'), 'utf8'), {
+    document, window, performance: { now: () => now },
+    crypto: { randomUUID: () => `request-${++nextId}` },
+    setTimeout: setFakeTimeout, clearTimeout: (id: number) => timers.delete(id),
+  });
+  const input = find('#request'), form = find('#timer-form'), result = find('#result');
+  const submit = async (value: string) => {
+    input.value = value;
+    await form.emit('submit', { preventDefault: () => {} });
+  };
+
+  await submit('5분 타이머');
+  assert.equal(result.textContent, '저장했습니다. 8초 뒤 입력창이 닫힙니다.');
+  advance(1000); assert.match(result.textContent, /7초 뒤/);
+  advance(1000); assert.match(result.textContent, /6초 뒤/);
+  advance(3500); assert.match(result.textContent, /3초 뒤/, 'a delayed update recalculates elapsed time');
+  advance(2500); assert.equal(closes, 1, 'the original eight-second deadline closes the prompt');
+
+  onOpen();
+  await submit('5분 타이머');
+  const staleAfterClose = [...timers.values()][0]!.callback;
+  onClose(); onOpen();
+  await submit('5분 타이머');
+  staleAfterClose();
+  assert.equal(closes, 1, 'a previous window session cannot close a reopened prompt');
+  assert.match(result.textContent, /8초 뒤/);
+  // Bringing an already visible prompt forward does not replay the open signal.
+  advance(1000); assert.match(result.textContent, /7초 뒤/);
+  const staleAfterNewRequest = [...timers.values()][0]!.callback;
+  await submit('잘했어');
+  staleAfterNewRequest();
+  assert.equal(closes, 1, 'an earlier request cannot close a newer result');
+  assert.match(result.textContent, /8초 뒤/);
+
+  await document.emit('pointerdown');
+  assert.equal(result.textContent, '저장했습니다.');
+  advance(10000); assert.equal(closes, 1);
+  await submit('안녕');
+  input.value = '다음 요청'; await input.emit('input');
+  assert.equal(result.textContent, '저장했습니다.', 'editing keeps the saved result but cancels closing');
+  advance(10000); assert.equal(closes, 1);
+  await submit('안녕');
+  await document.emit('keydown', { key: 'x' });
+  assert.equal(result.textContent, '저장했습니다.', 'keyboard work cancels the closing notice');
+  advance(10000); assert.equal(closes, 1);
+  await submit('안녕');
+  await input.emit('compositionstart');
+  assert.equal(result.textContent, '저장했습니다.');
+  advance(10000); assert.equal(closes, 1, 'Korean composition prevents closing');
+
+  onClose(); onOpen();
+  await submit('안녕');
+  const staleAfterEscape = [...timers.values()][0]!.callback;
+  await document.emit('keydown', { key: 'Escape', preventDefault: () => {} });
+  assert.equal(closes, 2, 'Escape closes the prompt');
+  onOpen();
+  await submit('안녕');
+  staleAfterEscape();
+  assert.equal(closes, 2, 'Escape cancels the old countdown before reopening');
+  onClose(); onOpen();
+  await submit('내일 9시 알람 확인');
+  assert.equal(result.textContent, '저장 전 확인해 주세요.');
+  assert.equal(timers.size, 0, 'calendar preview never starts auto-close');
 });

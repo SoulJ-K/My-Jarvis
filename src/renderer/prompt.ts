@@ -18,11 +18,36 @@
   let session = 0;
   let refreshVersion = 0;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
-  const cancelAutoClose = () => { clearTimeout(closeTimer); closeTimer = undefined; };
   const message = (text: string, error = false) => { result.textContent = text; result.classList.toggle('error', error); };
   const requestMessage = (text: string, error = false) => {
     message(text, error); input.setAttribute('aria-invalid', String(error));
   };
+  let closeGeneration = 0;
+  let savedResult: string | undefined;
+  const cancelAutoClose = () => {
+    closeGeneration++;
+    clearTimeout(closeTimer); closeTimer = undefined;
+    if (savedResult !== undefined) requestMessage(savedResult);
+  };
+  function startAutoClose(text: string) {
+    cancelAutoClose();
+    savedResult = text;
+    const deadline = performance.now() + 8000;
+    const generation = closeGeneration;
+    const activeSession = session;
+    const update = () => {
+      if (generation !== closeGeneration || activeSession !== session) return;
+      const remaining = Math.max(0, deadline - performance.now());
+      if (remaining === 0) {
+        if (!composing && !busy && !draftId && input.value === '') void close();
+        else cancelAutoClose();
+        return;
+      }
+      requestMessage(`${text} ${Math.ceil(remaining / 1000)}초 뒤 입력창이 닫힙니다.`);
+      closeTimer = setTimeout(update, Math.max(1, Math.ceil(remaining % 1000 || 1000)));
+    };
+    update();
+  }
   function setBusy(value: boolean) {
     busy = value; input.disabled = value; submit.disabled = value;
     confirmButton.disabled = value; editButton.disabled = value;
@@ -35,6 +60,7 @@
   }
   function resetInput() {
     session++; cancelAutoClose(); discardDraft();
+    savedResult = undefined;
     input.value = ''; requestId = crypto.randomUUID(); composing = false;
     compositionEnded = -Infinity; submitPressedAt = -Infinity;
     setBusy(false); requestMessage(idleMessage);
@@ -112,7 +138,7 @@
   input.addEventListener('compositionend', () => { composing = false; compositionEnded = performance.now(); });
   submit.addEventListener('pointerdown', () => { submitPressedAt = performance.now(); });
   input.addEventListener('input', () => {
-    cancelAutoClose(); requestId = crypto.randomUUID(); discardDraft(); requestMessage('');
+    cancelAutoClose(); requestId = crypto.randomUUID(); discardDraft(); requestMessage(savedResult ?? '');
   });
   form.addEventListener('keydown', event => {
     if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229 || performance.now() - compositionEnded < 100)) event.preventDefault();
@@ -122,7 +148,7 @@
     const pointerSubmit = event.submitter === submit && performance.now() - submitPressedAt < 1000;
     submitPressedAt = -Infinity;
     if (busy || composing || (!pointerSubmit && performance.now() - compositionEnded < 100)) return;
-    cancelAutoClose();
+    cancelAutoClose(); savedResult = undefined;
     const text = input.value.trim();
     if (!text) { requestMessage('부탁할 내용을 적어 주세요.', true); input.focus(); return; }
     // Route calendar-looking requests to the existing preview; interpretation remains in the service.
@@ -148,8 +174,7 @@
         requestMessage(reply.message, !reply.ok); void refresh();
         if (reply.ok) {
           input.value = ''; requestId = crypto.randomUUID();
-          requestMessage(`${reply.message} 8초 뒤 입력창이 닫힙니다.`);
-          closeTimer = setTimeout(() => { if (!composing && !busy && !draftId && input.value === '') void close(); }, 8000);
+          startAutoClose(reply.message);
         }
       }
     } catch {
