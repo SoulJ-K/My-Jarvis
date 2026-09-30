@@ -88,7 +88,7 @@
         const action = document.createElement('button'); action.className = 'secondary';
         action.textContent = row.status === 'pending' ? '타이머 취소' : '확인했어요';
         action.onclick = async () => {
-          cancelAutoClose(); action.disabled = true;
+          cancelAutoClose(); savedResult = undefined; action.disabled = true;
           try {
             if (row.status === 'pending') { const reply = await window.timerPanel.cancel(row.id); message(reply.message, !reply.ok); }
             else await window.timerPanel.acknowledge(row.id);
@@ -124,7 +124,7 @@
         action.textContent = row.status === 'pending' ? '알림 취소' : '확인했어요';
         action.setAttribute('aria-label', `${row.content} · ${row.localDateTime} · ${action.textContent}`);
         action.onclick = async () => {
-          cancelAutoClose(); action.disabled = true;
+          cancelAutoClose(); savedResult = undefined; action.disabled = true;
           try {
             if (row.status === 'pending') { const reply = await window.schedulePanel.cancel(row.id); message(reply.message, !reply.ok); }
             else { await window.schedulePanel.acknowledge(row.id); message('확인한 알림을 목록에서 정리했습니다.'); }
