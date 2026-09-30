@@ -8,6 +8,12 @@ button:hover { filter:brightness(.93); } button:active { filter:brightness(.84);
 .timer { border:1px solid var(--line); border-radius:12px; background:white; padding:14px; margin:10px 0; overflow-wrap:anywhere; } .timer button { margin-top:8px; } footer { font-size:12px; border-top:1px solid var(--line); padding-top:16px; margin-top:24px; }
 .notice main { padding:18px; } .notice h1 { font-size:18px; } .notice p { font-size:13px; }
 
-#schedule-result { min-height:24px; overflow-wrap:anywhere; } #schedule-result.error { color:#9a3024; } #schedule-summary { white-space:pre-line; overflow-wrap:anywhere; } [hidden] { display:none !important; }
+#schedule-summary { white-space:pre-line; overflow-wrap:anywhere; } [hidden] { display:none !important; }
+#confirmation-title { margin-top:0; }
+.examples { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:8px 0; }
+.examples summary { cursor:pointer; min-height:44px; padding:10px 0; font-weight:600; }
+.examples ul { padding-left:20px; margin:8px 0; font-size:13px; }
+.examples li { margin:8px 0; }
+input[aria-invalid="true"] { border-color:#9a3024; }
 
 #notice-content { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

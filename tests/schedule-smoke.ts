@@ -29,17 +29,32 @@ app.whenReady().then(async () => {
   panels = await createPromptWindows(timer,true,schedules); ipcMain.handle = register;
   const run = (code: string) => panels.prompt.webContents.executeJavaScript(code);
   const settle = () => run('new Promise(resolve => setTimeout(resolve, 80))');
-  const input = (text: string) => run(`(() => { const el=document.querySelector('#schedule-request'); el.value=${JSON.stringify(text)}; el.dispatchEvent(new Event('input')); document.querySelector('#schedule-form').requestSubmit(); })()`);
+  const input = (text: string) => run(`(() => { const el=document.querySelector('#request'); el.value=${JSON.stringify(text)}; el.dispatchEvent(new Event('input')); document.querySelector('#timer-form').requestSubmit(); })()`);
   panels.open(); await settle();
+  assert.equal(await run('document.querySelectorAll("input").length'),1);
+  assert.equal(await run('document.querySelectorAll("form").length'),1);
+  await input(''); await settle();
+  assert.match(await run('document.querySelector("#result").textContent'),/내용을 적어/);
+  await input('이해하지 못하는 요청'); await settle();
+  assert.equal(schedules.views().length,0); assert.equal(timer.views().length,0);
+  assert.equal(await run('document.querySelector("#request").getAttribute("aria-invalid")'),'true');
+  // Editing a preview must invalidate its server-side draft, even when switching to a timer.
+  await input('내일 오전 7시 알람'); await settle();
+  const staleId = await run('window.schedulePanel.preview("stale-preview", "내일 오전 7시 알람").then(r => r.draft.id)');
+  await input('5분 타이머'); await settle();
+  assert.equal((await run(`window.schedulePanel.confirm(${JSON.stringify(staleId)})`)).ok,false);
+  assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
+  assert.equal(timer.views().length,1); assert.equal(schedules.views().length,0);
+  await run('document.querySelector("#timers button").click()'); await settle();
   await input('내일 3시 알람'); await settle();
-  assert.match(await run('document.querySelector("#schedule-result").textContent'),/오전·오후/);
+  assert.match(await run('document.querySelector("#result").textContent'),/오전·오후/);
   assert.equal(schedules.views().length,0);
-  await run(`(() => { const el=document.querySelector('#schedule-request'); el.value='오늘 10:00 알람'; el.dispatchEvent(new CompositionEvent('compositionstart')); document.querySelector('#schedule-form').requestSubmit(); })()`);
+  await run(`(() => { const el=document.querySelector('#request'); el.value='오늘 10:00 알람'; el.dispatchEvent(new CompositionEvent('compositionstart')); document.querySelector('#timer-form').requestSubmit(); })()`);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
-  await run(`document.querySelector('#schedule-request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('#schedule-form').requestSubmit()`);
+  await run(`document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('#timer-form').requestSubmit()`);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
-  await run(`(() => { const button=document.querySelector('#schedule-preview'); button.dispatchEvent(new PointerEvent('pointerdown'));
-    document.querySelector('#schedule-form').requestSubmit(button); })()`);
+  await run(`(() => { const button=document.querySelector('#submit'); button.dispatchEvent(new PointerEvent('pointerdown'));
+    document.querySelector('#timer-form').requestSubmit(button); })()`);
   await settle();
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),false);
   await run('document.querySelector("#schedule-edit").click()');
@@ -49,13 +64,24 @@ app.whenReady().then(async () => {
   assert.equal(await run('document.activeElement.id'),'schedule-confirm');
   assert.match(await run('document.querySelector("#schedule-summary").textContent'),/2026-09-26 10:00/);
   assert.match(await run('document.querySelector("#schedule-summary").textContent'),/서류 확인/);
+  // Repeated submissions cannot register anything before explicit confirmation.
+  await run('document.querySelector("#timer-form").requestSubmit(); document.querySelector("#timer-form").requestSubmit()'); await settle();
+  assert.equal(schedules.views().length,0);
   const previewImage = path.join(tmpdir(),'jarvis-schedule-confirmation.png');
   await run('document.querySelector("#schedule-confirmation").scrollIntoView({block:"center"})');
   await settle();
   writeFileSync(previewImage,(await panels.prompt.webContents.capturePage()).toPNG());
   assert.throws(() => previewHandler(previewEvent,'bad','내일 10:00 알람','extra'),/PROMPT_REQUEST_DENIED/);
   assert.throws(() => previewHandler(previewEvent,{},'내일 10:00 알람'),/SCHEDULE_ACTION_FAILED/);
+  // A failed write retains the input and confirmation for a safe retry.
+  const originalInsert = scheduleStore.insert.bind(scheduleStore);
+  scheduleStore.insert = () => { throw new Error('simulated write failure'); };
   await run('document.querySelector("#schedule-confirm").click()'); await settle();
+  assert.equal(schedules.views().length,0);
+  assert.equal(await run('document.querySelector("#request").value'),'오늘 10:00 리마인더 서류 확인');
+  assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),false);
+  scheduleStore.insert = originalInsert;
+  await run('document.querySelector("#schedule-confirm").click(); document.querySelector("#schedule-confirm").click()'); await settle();
   assert.equal(schedules.views().length,1);
   const firstId = schedules.views()[0].id;
   assert.equal((await run(`window.schedulePanel.confirm(${JSON.stringify(firstId)})`)).ok,true);
@@ -72,7 +98,7 @@ app.whenReady().then(async () => {
   await run('document.querySelector("#schedule-edit").click()'); await settle();
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
   await run('window.timerPanel.close()'); await settle(); assert.equal(schedules.views().length,1);
-  assert.equal(await run('document.querySelector("#schedule-request").value'),'');
+  assert.equal(await run('document.querySelector("#request").value'),'');
   // A late deadline shows an inactive app notice and retains failure detail in the inbox.
   const typing = new BrowserWindow({show:true,width:300,height:150}); await typing.loadURL('data:text/html,<input autofocus>'); typing.focus(); await settle();
   const focused = BrowserWindow.getFocusedWindow(); now += 3605000; schedules.tick(); await settle();
