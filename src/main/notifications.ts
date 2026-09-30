@@ -29,10 +29,12 @@ function notificationQueue<T>(message: (item: T) => NotificationConstructorOptio
         if (!backend.isSupported()) { report('unsupported'); return; }
         notification = backend.create(message(item));
       } catch { report('failed'); return; }
-      let settled = false;
+      let outcome: SystemDelivery | undefined;
       const settle = (result: SystemDelivery) => {
-        if (settled || disposed) return;
-        settled = true;
+        // A native failure can arrive after a show signal. Keep the reported
+        // result faithful to that failure; a close or missing click is not one.
+        if (disposed || outcome === 'failed' || (outcome && result !== 'failed')) return;
+        outcome = result;
         clearTimeout(timeout);
         report(result);
       };
@@ -41,7 +43,12 @@ function notificationQueue<T>(message: (item: T) => NotificationConstructorOptio
         notification.removeAllListeners();
         active.delete(cancel);
       };
-      const cancel = () => { release(); notification.close(); };
+      const cancel = () => {
+        // Quitting the app must not withdraw an alert already accepted by the OS.
+        const pending = outcome !== 'shown' && outcome !== 'failed';
+        release();
+        if (pending) notification.close();
+      };
       const timeout = setTimeout(() => {
         // Stop owning unresolved native objects; late events cannot rewrite a
         // persisted unknown outcome or run after TimerService has been disposed.
