@@ -120,7 +120,8 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   }
   food.dataset.eating = String(state.behavior === 'eating');
   const text = { resting: '', drowsy: '졸려…', sleeping: '새근새근', approaching: '다가가는 중', eating: '냠냠' }[state.behavior];
-  caption.textContent = reunion ? (state.behavior === 'drowsy' ? '왔어…?' : '왔어!') : text || state.social.caption;
+  caption.textContent = state.social.motion === 'away' ? state.social.caption :
+    reunion ? (state.behavior === 'drowsy' ? '왔어…?' : '왔어!') : text || state.social.caption;
   egg.dataset.social = state.social.motion;
   const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
   orb.hidden = !state.social.orb;

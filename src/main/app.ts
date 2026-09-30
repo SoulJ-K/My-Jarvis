@@ -114,8 +114,8 @@ export function startJarvis(options: {
       if (lifecycle.read().completed !== null) throw new Error('EGG_CARE_ENDED');
       life.care(kind);
       checkpoint();
-    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }),
-    baby, () => panels?.open(), () => !quitting);
+    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby,
+    () => { if (panels && !panels.prompt.isVisible()) panels.open(); }, () => !quitting);
     win.on('closed', () => {
       if (!quitting) recordPetDiagnostic('pet_window_closed_unexpectedly');
       app.quit();

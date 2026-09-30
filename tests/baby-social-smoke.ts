@@ -113,6 +113,43 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal((await run('window.timerPanel.read()'))[0].status, 'due');
     now += T.recovery;
     await until(() => pet('document.querySelector("#egg").dataset.social !== "away"'));
+    // Drive the actual pet button while the separate input panel is already open.
+    // A press is visual feedback; only the completed, unmoved gesture is contact.
+    let opens = 0;
+    let promptVisible = false;
+    prompt.show = () => { opens++; promptVisible = true; };
+    prompt.focus = () => {};
+    prompt.isVisible = () => promptVisible;
+    const touches = () => JSON.parse(String(db.prepare('SELECT snapshot FROM baby_social').get()!.snapshot)).touches as number;
+    now += T.touchWindow + 1;
+    await until(() => Promise.resolve(touches() === 0));
+    const experiencesBeforeClicks = Number(count());
+    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 90, y: win.getBounds().y + 120 });
+    const clickPet = async (expectedTouches: number) => {
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 120 });
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 120, button: 'left', clickCount: 1 });
+      await until(() => pet('document.querySelector("#egg").classList.contains("pressed")'));
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: 90, y: 120, button: 'left', clickCount: 1 });
+      await until(() => Promise.resolve(touches() === expectedTouches));
+    };
+    await clickPet(1);
+    assert.equal(opens, 1);
+    assert.notEqual(await pet('document.querySelector("#egg").dataset.social'), 'away');
+    await run('document.querySelector("#request").focus(); document.querySelector("#submit").click()');
+    assert.equal(touches(), 1, 'input field and button are separate from pet contact');
+    await clickPet(2);
+    await clickPet(3);
+    assert.equal(opens, 1, 'a visible input panel is not reopened on further pet clicks');
+    assert.equal(count(), experiencesBeforeClicks + 1, 'one completed repeat creates one social experience');
+    await until(() => pet('document.querySelector("#egg").dataset.social === "away"'));
+    let dragCursor = { x: win.getBounds().x + 90, y: win.getBounds().y + 120 };
+    screen.getCursorScreenPoint = () => dragCursor;
+    await pet('window.petWindow.beginDrag()');
+    dragCursor = { x: dragCursor.x + 20, y: dragCursor.y + 10 };
+    await pet('window.petWindow.moveDrag()');
+    assert.equal(await pet('window.petWindow.endDrag()'), true);
+    assert.equal(touches(), 3, 'dragging the baby is not another contact');
+    assert.equal(count(), experiencesBeforeClicks + 1);
     db.close(); clearTimeout(timeout);
     console.log('PASS: production baby input/IME, exact grammar, minimal experience, failed save/retry, IPC sender/frame/arguments, same orb, cursor departure, orb/stop, space/recovery, timer independence, screenshots');
     app.quit();

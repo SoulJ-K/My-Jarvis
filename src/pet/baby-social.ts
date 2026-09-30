@@ -41,7 +41,8 @@ export function parseBabyInput(input: unknown): SocialCommand | null {
   return null;
 }
 /** Body readiness is supplied by the life policy. Hunger never selects an emotion. */
-export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting: boolean, command: SocialCommand) {
+export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting: boolean, command: SocialCommand,
+  sleepEndsAt?: number) {
   validateBabySocial(before);
   if (!Number.isSafeInteger(elapsedMs) || elapsedMs < before.elapsedMs) throw new Error('SOCIAL_CLOCK_INVALID');
   const s = { ...before, elapsedMs };
@@ -65,7 +66,10 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
   if (command.type === 'touch') {
     s.touches = Math.min(3, s.touches + 1); s.lastTouch = elapsedMs;
     if (s.touches >= 3 && elapsedMs >= s.distanceUntil) {
-      mood('discomfort'); s.distanceUntil = elapsedMs + T.distance;
+      mood('discomfort');
+      // A sleeping baby cannot show distance yet. Keep the same finite interval
+      // available after the next wake, including across app restarts.
+      s.distanceUntil = Math.max(elapsedMs, sleepEndsAt ?? elapsedMs) + T.distance;
       s.strain = Math.min(3, s.strain + 1); s.recoveryAt = elapsedMs;
       events.push('repeated_touch');
     } else if (s.touches < 3 && elapsedMs >= s.distanceUntil && resting) { mood('curiosity'); bond(); }
@@ -97,14 +101,14 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
   validateBabySocial(s);
   return { state: s, events };
 }
-export function socialView(s: BabySocial, orbId: string, resting: boolean) {
+export function socialView(s: BabySocial, orbId: string, resting: boolean, drowsy = false) {
   const distancing = s.elapsedMs < s.distanceUntil;
   const emotion = resting ? s.emotion : 'quiet';
-  return { emotion, motion: !resting ? 'still' : distancing ? 'away' : s.play === 'cursor' ? 'chase' :
+  return { emotion, motion: distancing && (resting || drowsy) ? 'away' : !resting ? 'still' : s.play === 'cursor' ? 'chase' :
     s.play === 'orb' ? 'play-orb' : emotion === 'joy' ? 'bounce' : emotion === 'curiosity' ? 'tilt' :
     s.familiarity - s.strain >= 3 ? 'near' : 'still',
     orb: resting && !distancing && (emotion !== 'quiet' || s.play === 'orb') ? { id: orbId, expression: emotion } : null,
-    caption: !resting ? '' : distancing ? '잠깐 쉴래…' : s.play === 'cursor' ? '뭐지?' : s.play === 'orb' ? '데굴데굴' :
+    caption: distancing && (resting || drowsy) ? '잠깐 쉴래…' : !resting ? '' : s.play === 'cursor' ? '뭐지?' : s.play === 'orb' ? '데굴데굴' :
       emotion === 'joy' ? '좋아!' : emotion === 'curiosity' ? '응?' : '' };
 }
 export type BabySocialView = ReturnType<typeof socialView>;

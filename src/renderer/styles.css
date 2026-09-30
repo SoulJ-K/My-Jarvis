@@ -78,8 +78,8 @@ main { position: relative; width: 180px; height: 200px; }
 }
 
 /* Temporary shape-only expression; body needs retain their own rendering. */
-#egg[data-life=resting][data-social=away] { transform: translateX(18px); }
-#egg[data-life=resting][data-social=away] .shell { transform: rotate(8deg); }
+#egg[data-life=resting][data-social=away], #egg[data-life=drowsy][data-social=away] { transform: translateX(18px); }
+#egg[data-life=resting][data-social=away] .shell, #egg[data-life=drowsy][data-social=away] .shell { animation: none; transform: rotate(8deg); }
 #egg[data-life=resting][data-social=near] { transform: translateX(-8px); }
 #egg[data-life=resting][data-social=chase] { transform: translateX(14px); transition-duration: .7s; }
 #egg[data-life=resting][data-social=chase][data-direction=left] { transform: translateX(-14px); }
