@@ -67,14 +67,15 @@ main { position: relative; width: 180px; height: 200px; }
 #egg[data-life=sleeping] .shell::before { height: 3px; top: 36px; border-radius: 0; }
 #egg[data-life=drowsy] .shell { animation: baby-nod 3s ease-in-out infinite; }
 #egg[data-life=eating] .shell { animation: baby-nod .9s ease-in-out infinite; }
-#life-caption { position: absolute; top: 4px; left: 12px; margin: 0; padding: 2px 5px; color: #283448; background: #f6f4ed; border-radius: 8px; font: 12px/1.5 system-ui, sans-serif; pointer-events: none; }
-#life-caption:empty { display: none; }
+#sleep-symbol { position: absolute; left: 129px; top: 85px; color: #527c71; font: 700 14px/1 system-ui, sans-serif; pointer-events: none; user-select: none; animation: sleep-glow 2.6s ease-in-out infinite alternate; }
+#sleep-symbol[hidden] { display: none; }
 #save-status { bottom: 24px; z-index: 3; pointer-events: none; }
 @keyframes nibble { 50% { transform: scale(.8); } }
 @keyframes baby-nod { 50% { transform: scaleY(.95) rotate(2deg); } }
+@keyframes sleep-glow { to { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) {
   #egg.baby-idle { transition: none; }
-  #egg[data-life] .shell, #food[data-eating=true] span { animation: none; }
+  #egg[data-life] .shell, #food[data-eating=true] span, #sleep-symbol { animation: none; }
 }
 
 /* Temporary shape-only expression; body needs retain their own rendering. */
