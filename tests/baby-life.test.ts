@@ -5,12 +5,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { advanceBabyLife, babyDayPeriod, babyView, BABY_TIMING as T, cycle, initialBabyLife, validateBabyLife } from '../src/pet/baby-life';
+import { advanceBabyLife, babyDayPeriod, babyView, BABY_TIMING as T, cycle, initialBabyLife, validateBabyLife,
+  BABY_STAGE, babyApproachDuration, babyTargetForFood, reachableFoodPoint } from '../src/pet/baby-life';
 import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
 const tick = { type: 'tick' } as const;
+const approachMs = babyApproachDuration({ x: BABY_STAGE.startX, y: BABY_STAGE.startY }, 116, 146);
+const mealMs = approachMs + T.chew;
 test('provisional local day boundaries, late-night drowsiness, meal and sleep priority', () => {
   const at = (hour: number, minute = 0) => new Date(2026, 8, 26, hour, minute).getTime();
   for (const [hour, minute, expected] of [[6, 59, 'late-night'], [7, 0, 'day'], [19, 59, 'day'],
@@ -21,9 +24,9 @@ test('provisional local day boundaries, late-night drowsiness, meal and sleep pr
   assert.equal(babyView(initialBabyLife(at(21))).behavior, 'resting');
   const late = { ...initialBabyLife(at(23)), elapsedMs: T.hungry, hungerMs: T.hungry };
   assert.equal(babyView(late).behavior, 'drowsy');
-  const meal = advanceBabyLife(late, at(23), { type: 'feed', offerId: babyView(late).offerId!, x: 116, y: 146 });
+  const meal = advanceBabyLife(late, at(23), { type: 'feed', offerId: babyView(late).offerId!, x: 116, y: 146, approachMs });
   assert.equal(babyView(meal.state).behavior, 'approaching');
-  assert.equal(babyView(advanceBabyLife(meal.state, at(23) + T.meal, tick).state).behavior, 'drowsy');
+  assert.equal(babyView(advanceBabyLife(meal.state, at(23) + mealMs, tick).state).behavior, 'drowsy');
   assert.equal(babyView({ ...late, elapsedMs: T.awake }).behavior, 'sleeping');
   // Morning is a body presentation change, not a repeated greeting or a new experience.
   const morning = advanceBabyLife(initialBabyLife(at(6, 59)), at(7), tick);
@@ -54,19 +57,46 @@ test('time, food expiry/reappearance, drowsiness and autonomous sleep without AI
 });
 test('one offer, fixed eating time, stale/duplicate feed, and post-meal hunger', () => {
   let s = advanceBabyLife(initialBabyLife(0), T.hungry, tick).state;
-  const feed = { type: 'feed', offerId: babyView(s).offerId!, x: 116, y: 146 } as const;
+  const feed = { type: 'feed', offerId: babyView(s).offerId!, x: 116, y: 146, approachMs } as const;
   const offered = advanceBabyLife(s, T.hungry, feed);
   assert.deepEqual(offered.events.map(e => e.kind), ['food_offered']);
   s = offered.state;
   assert.equal(babyView(s).behavior, 'approaching');
   assert.equal(advanceBabyLife(s, T.hungry, feed).events.length, 0);
-  s = advanceBabyLife(s, T.hungry + T.approach, tick).state;
+  s = advanceBabyLife(s, T.hungry + approachMs, tick).state;
   assert.equal(babyView(s).behavior, 'eating');
-  const done = advanceBabyLife(s, T.hungry + T.meal, tick);
+  const done = advanceBabyLife(s, T.hungry + mealMs, tick);
   assert.equal(done.state.hungerMs, 0);
   assert.deepEqual(done.events.map(e => e.kind), ['meal_finished']);
-  assert.equal(advanceBabyLife(done.state, T.hungry + T.meal, feed).events.length, 0);
-  assert.throws(() => advanceBabyLife(done.state, T.hungry + T.meal, { ...feed, x: NaN }), /DROP_INVALID/);
+  assert.equal(advanceBabyLife(done.state, T.hungry + mealMs, feed).events.length, 0);
+  assert.throws(() => advanceBabyLife(done.state, T.hungry + mealMs, { ...feed, x: NaN }), /DROP_INVALID/);
+});
+test('wide edge drops move to a reachable mouth point and finish only after chewing', () => {
+  assert.deepEqual(reachableFoodPoint(420, 300), { x: 374, y: 263 });
+  assert.deepEqual(babyTargetForFood(420, 300), { x: 308, y: 200 });
+  assert.deepEqual(babyTargetForFood(0, 0), { x: 8, y: 8 });
+  const edgeApproach = babyApproachDuration({ x: BABY_STAGE.startX, y: BABY_STAGE.startY }, 420, 300);
+  assert.ok(edgeApproach > 19_000 && edgeApproach <= T.approachMax);
+  const hungry = advanceBabyLife(initialBabyLife(0), T.hungry, tick).state;
+  const offerId = babyView(hungry).offerId!;
+  const offered = advanceBabyLife(hungry, T.hungry,
+    { type: 'feed', offerId, x: 420, y: 300, approachMs: edgeApproach });
+  assert.deepEqual(offered.events.map(e => e.kind), ['food_offered']);
+  assert.deepEqual({ x: offered.state.meal!.x, y: offered.state.meal!.y }, { x: 374, y: 263 });
+  assert.equal(babyView(advanceBabyLife(offered.state, T.hungry + edgeApproach - 1, tick).state).behavior, 'approaching');
+  assert.equal(babyView(advanceBabyLife(offered.state, T.hungry + edgeApproach, tick).state).behavior, 'eating');
+  assert.deepEqual(advanceBabyLife(offered.state, T.hungry + edgeApproach + T.chew - 1, tick).events, []);
+  const done = advanceBabyLife(offered.state, T.hungry + edgeApproach + T.chew, tick);
+  assert.deepEqual(done.events.map(e => e.kind), ['meal_finished']);
+  assert.equal(done.state.meal, null);
+});
+test('an in-progress meal saved by the old app keeps its original completion time', () => {
+  const old = { ...initialBabyLife(0), elapsedMs: T.hungry + T.approach, hungerMs: T.hungry,
+    meal: { id: 'food:3', startedElapsedMs: T.hungry, x: 116, y: 146 } };
+  validateBabyLife(old);
+  assert.equal(babyView(old).behavior, 'eating');
+  const done = advanceBabyLife(old, T.meal - T.approach, tick);
+  assert.deepEqual(done.events.map(e => e.kind), ['meal_finished']);
 });
 test('months away stay bounded, O(1) aggregate completed sleep, no invented care or unpaired starts', () => {
   const elapsed = 180 * 24 * cycle + T.awake + 1000;
@@ -107,16 +137,16 @@ test('meal across close/reopen finishes once and state/events roll back together
   repo.apply(tick); now = T.hungry;
   const view = babyView(repo.apply(tick));
   const db = new DatabaseSync(petDatabasePath(directory));
-  const feed = { type: 'feed', offerId: view.offerId!, x: 116, y: 146 } as const;
+  const feed = { type: 'feed', offerId: view.offerId!, x: 116, y: 146, approachMs } as const;
   const before = repo.read();
   db.exec("CREATE TRIGGER fail_experience BEFORE INSERT ON baby_experience BEGIN SELECT RAISE(ABORT,'test'); END");
   assert.throws(() => repo.apply(feed), /WRITE_FAILED/);
   assert.deepEqual(repo.read(), before);
   db.exec('DROP TRIGGER fail_experience');
-  repo.apply(feed); repo.close(); now += T.approach;
+  repo.apply(feed); repo.close(); now += approachMs;
   repo = new BabyLifeRepository(directory, () => now);
   assert.equal(babyView(repo.apply(tick)).behavior, 'eating');
-  repo.close(); now += T.meal;
+  repo.close(); now += T.chew;
   repo = new BabyLifeRepository(directory, () => now);
   assert.equal(babyView(repo.apply(tick)).behavior, 'resting');
   repo.apply(feed); repo.apply(tick);
@@ -137,7 +167,7 @@ test('production startup restores the same named baby and an interrupted meal us
   const repo = new BabyLifeRepository(directory, () => now);
   repo.apply(tick); now += T.hungry;
   const view = babyView(repo.apply(tick));
-  repo.apply({ type: 'feed', offerId: view.offerId!, x: 116, y: 146 }); repo.close();
+  repo.apply({ type: 'feed', offerId: view.offerId!, x: 116, y: 146, approachMs }); repo.close();
   const launch = (at: number) => {
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
     const run = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/baby-runner.js'), directory, String(at)], { env, encoding: 'utf8', timeout: 15000 });
@@ -145,10 +175,13 @@ test('production startup restores the same named baby and an interrupted meal us
     const line = run.stdout.split('\n').find(s => s.startsWith('BABY_RESULT:'))!;
     assert.ok(line); return JSON.parse(line.slice('BABY_RESULT:'.length));
   };
-  const eating = launch(now + T.approach);
+  const eating = launch(now + approachMs);
   assert.equal(eating.behavior, 'eating');
   assert.equal(eating.reunion, false);
-  assert.equal(launch(now + T.meal).behavior, 'resting');
+  const finished = launch(now + mealMs);
+  assert.equal(finished.behavior, 'resting');
+  assert.deepEqual(finished.position, { x: BABY_STAGE.startX, y: BABY_STAGE.startY },
+    'a new app session starts from the usual place');
   const returned = launch(now + T.awake);
   assert.equal(returned.behavior, 'resting');
   assert.equal(returned.reunion, true);

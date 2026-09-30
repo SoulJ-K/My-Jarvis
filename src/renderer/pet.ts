@@ -4,6 +4,7 @@ window.petWindow.snapshot().then(pet => {
   egg.dataset.petId = pet.petId;
   egg.dataset.stage = pet.stage;
   if (pet.stage === 'baby') {
+    document.documentElement.dataset.stage = 'baby';
     egg.classList.add('baby-idle');
     egg.title = '클릭: 입력창 · 드래그: 이동';
     egg.setAttribute('aria-label', `${pet.name ?? '아기'}, 클릭하면 입력창을 열고, 드래그하면 이동합니다.`);
@@ -54,7 +55,7 @@ document.documentElement.addEventListener('pointerleave', () => {
   window.petWindow.hover(false);
 });
 egg.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || activePointer !== undefined) return;
+  if (event.button !== 0 || activePointer !== undefined || foodPointer !== undefined) return;
   event.preventDefault();
   activePointer = event.pointerId;
   egg.setPointerCapture(event.pointerId);
@@ -102,23 +103,57 @@ let foodStart = { x: 0, y: 0 };
 let foodMoved = false;
 let feeding = false;
 let babySaveFailed = false;
+let activeMealId: string | undefined;
+let displayedBabyPosition = { x: 36, y: 152 };
+function moveBaby(position: { x: number; y: number }) {
+  displayedBabyPosition = position;
+  egg.style.setProperty('--baby-x', `${position.x - 36}px`);
+  egg.style.setProperty('--baby-y', `${position.y - 152}px`);
+  const shadow = document.querySelector<HTMLElement>('.shadow')!;
+  shadow.style.setProperty('--baby-x', `${position.x - 36}px`);
+  shadow.style.setProperty('--baby-y', `${position.y - 152}px`);
+}
 function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   if (!state || state.revision < babyRevision) return;
   babyRevision = state.revision;
   babyState = state;
+  document.documentElement.dataset.stage = 'baby';
+  egg.classList.add('baby-idle');
   egg.dataset.life = state.behavior;
   egg.dataset.dayPeriod = state.dayPeriod;
+  document.querySelector<HTMLElement>('.shadow')!.dataset.approaching = String(state.behavior === 'approaching');
   // Sleeping/eating and requests for space take priority; no queued greeting.
   const reunion = Boolean(state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
   egg.dataset.reunion = String(reunion);
-  egg.style.setProperty('--baby-step', state.meal ? `${Math.max(-20, Math.min(20, state.meal.x - 90))}px` : '0px');
+  if (state.meal) {
+    if (activeMealId !== state.meal.id) {
+      activeMealId = state.meal.id;
+      const remaining = Math.max(0, state.meal.approachMs - state.meal.progressMs);
+      egg.style.setProperty('--approach-ms', `${remaining}ms`);
+      document.querySelector<HTMLElement>('.shadow')!.style.setProperty('--approach-ms', `${remaining}ms`);
+      moveBaby(state.position);
+      // Commit the start frame before moving. This also resumes a meal after a page reload.
+      void egg.getBoundingClientRect();
+      moveBaby({ x: state.meal.x - 66, y: state.meal.y - 63 });
+    }
+  } else {
+    activeMealId = undefined;
+    if (displayedBabyPosition.x !== state.position.x || displayedBabyPosition.y !== state.position.y) moveBaby(state.position);
+  }
+  const socialStep = state.behavior === 'resting' || state.behavior === 'drowsy' ?
+    state.social.motion === 'away' ? 18 : state.social.motion === 'near' ? -8 :
+      state.social.motion === 'chase' ? (egg.dataset.direction === 'left' ? -14 : 14) : 0 : 0;
+  egg.style.setProperty('--social-x', `${Math.max(8, Math.min(308, state.position.x + socialStep)) - state.position.x}px`);
   if (foodPointer === undefined) {
     food.hidden = !state.offerId && !state.meal;
     food.disabled = Boolean(state.meal) || feeding;
-    food.style.left = `${(state.meal?.x ?? 150) - 22}px`;
-    food.style.top = `${(state.meal?.y ?? 42) - 22}px`;
+    food.style.left = `${(state.meal?.x ?? 372) - 22}px`;
+    food.style.top = `${(state.meal?.y ?? 200) - 22}px`;
   }
   food.dataset.eating = String(state.behavior === 'eating');
+  const chewProgress = state.meal ? Math.max(0, Math.min(1,
+    (state.meal.progressMs - state.meal.approachMs) / state.meal.chewMs)) : 0;
+  food.style.setProperty('--food-bite', String(1 - chewProgress * .9));
   const text = { resting: '', drowsy: '졸려…', sleeping: '새근새근', approaching: '다가가는 중', eating: '냠냠' }[state.behavior];
   caption.textContent = state.social.motion === 'away' ? state.social.caption :
     reunion ? (state.behavior === 'drowsy' ? '왔어…?' : '왔어!') : text || state.social.caption;
@@ -140,7 +175,7 @@ void window.babyLife.read().then(renderBaby).catch(showBabyFailure);
 window.addEventListener('unload', () => { unsubscribeBaby(); unsubscribeBabyFailure(); }, { once: true });
 async function placeFood(x: number, y: number) {
   if (!babyState?.offerId || feeding) return;
-  if (x < 20 || x > 160 || y < 72 || y > 162 || Math.hypot(x - 90, y - 125) > 66) {
+  if (x < 0 || x > 420 || y < 0 || y > 300) {
     renderBaby(babyState); return;
   }
   feeding = true; food.disabled = true;
@@ -157,14 +192,14 @@ food.addEventListener('pointerdown', event => {
 food.addEventListener('pointermove', event => {
   if (event.pointerId !== foodPointer) return;
   if (Math.hypot(event.clientX - foodStart.x, event.clientY - foodStart.y) > 5) foodMoved = true;
-  food.style.left = `${Math.max(0, Math.min(136, event.clientX - 22))}px`;
-  food.style.top = `${Math.max(0, Math.min(150, event.clientY - 22))}px`;
+  food.style.left = `${Math.max(0, Math.min(376, event.clientX - 22))}px`;
+  food.style.top = `${Math.max(0, Math.min(256, event.clientY - 22))}px`;
 });
 food.addEventListener('pointerup', event => {
   if (event.pointerId !== foodPointer) return;
   const moved = foodMoved;
   foodPointer = undefined; food.releasePointerCapture(event.pointerId);
-  void placeFood(moved ? event.clientX : 116, moved ? event.clientY : 146);
+  void placeFood(moved ? event.clientX : 220, moved ? event.clientY : 190);
   hovering = false; syncHover(event.clientX, event.clientY);
 });
 function cancelFood() {
@@ -176,7 +211,7 @@ function cancelFood() {
 food.addEventListener('pointercancel', cancelFood);
 food.addEventListener('lostpointercapture', cancelFood);
 window.addEventListener('blur', cancelFood);
-food.addEventListener('click', event => { if (event.detail === 0) void placeFood(116, 146); });
+food.addEventListener('click', event => { if (event.detail === 0) void placeFood(220, 190); });
 
 const unsubscribeDirection = window.babyLife.onDirection(direction => { egg.dataset.direction = direction; });
 window.addEventListener('unload', unsubscribeDirection, { once: true });
