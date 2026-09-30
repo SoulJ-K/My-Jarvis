@@ -101,3 +101,8 @@ html[data-stage=baby] .shadow { left: 41px; top: 235px; transform: translate(var
   #egg[data-life=resting][data-social] .shell, #emotion-orb[data-play=true] { animation: none; }
   #egg[data-life=resting][data-social=chase] { transition: none; }
 }
+
+/* Attach labels and the orb to the same moving body without adding hit targets. */
+#egg #pet-name { bottom: auto; top: min(100px, calc(279px - var(--body-y, 152px))); left: 50%; right: auto; transform: translateX(-50%); width: max-content; max-width: 120px; padding: 0 8px; pointer-events: none; }
+#egg #emotion-orb { left: 40px; top: max(-32px, calc(4px - var(--body-y, 152px))); }
+#egg #emotion-orb[data-play=true] { left: 90px; top: 74px; }
