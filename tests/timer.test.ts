@@ -101,6 +101,8 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   type Handler = (event?: Record<string, unknown>) => unknown;
   class Element {
     value = ''; textContent = ''; hidden = false; disabled = false;
+    children: Element[] = [];
+    onclick?: () => Promise<void>;
     private listeners = new Map<string, Handler[]>();
     classList = { toggle: () => {} };
     addEventListener(name: string, handler: Handler) {
@@ -111,8 +113,8 @@ test('prompt countdown follows its deadline and cancels with its saved result in
     }
     setAttribute(_name: string, _value: string) {}
     focus() {}
-    replaceChildren() { this.textContent = ''; }
-    append(..._children: Element[]) {}
+    replaceChildren() { this.textContent = ''; this.children = []; }
+    append(...children: Element[]) { this.children.push(...children); }
   }
   const elements = new Map<string, Element>();
   const find = (selector: string) => {
@@ -141,9 +143,12 @@ test('prompt countdown follows its deadline and cancels with its saved result in
     }
   };
   let onClose = () => {}, onOpen = () => {};
+  let hasTimer = false;
   const window = {
     timerPanel: {
-      read: async () => [], submit: async () => ({ ok: true, message: '저장했습니다.' }),
+      read: async () => hasTimer ? [{ id: 'timer', status: 'pending', dueAt: 0 }] : [],
+      cancel: async () => { hasTimer = false; return { ok: true, message: '타이머를 취소했습니다.' }; },
+      submit: async () => ({ ok: true, message: '저장했습니다.' }),
       close: async () => { closes++; onClose(); },
       onClose: (handler: () => void) => { onClose = handler; },
       onOpen: (handler: () => void) => { onOpen = handler; },
@@ -216,6 +221,14 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   await submit('안녕');
   staleAfterEscape();
   assert.equal(closes, 2, 'Escape cancels the old countdown before reopening');
+  onClose(); onOpen();
+  hasTimer = true;
+  await submit('5분 타이머');
+  await Promise.resolve();
+  await find('#timers').children[0]!.children[2]!.onclick!();
+  assert.equal(result.textContent, '타이머를 취소했습니다.');
+  await document.emit('keydown', { key: 'x' });
+  assert.equal(result.textContent, '타이머를 취소했습니다.', 'interaction cannot restore stale registration success');
   onClose(); onOpen();
   await submit('내일 9시 알람 확인');
   assert.equal(result.textContent, '저장 전 확인해 주세요.');
