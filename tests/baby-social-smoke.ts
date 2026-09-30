@@ -84,7 +84,7 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal((await submit('잘했어')).ok, true);
     // Fake visibility and cursor only in this isolated process; OS cursor is never moved.
     win.isVisible = () => true;
-    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 30, y: win.getBounds().y + 120 });
+    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 30, y: win.getBounds().y + 200 });
     now += T.emotion;
     await until(() => pet('document.querySelector("#egg").dataset.social === "chase"'));
     assert.equal(await pet('document.querySelector("#egg").dataset.direction'), 'left');
@@ -134,12 +134,12 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     now += T.touchWindow + 1;
     await until(() => Promise.resolve(touches() === 0));
     const experiencesBeforeClicks = Number(count());
-    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 90, y: win.getBounds().y + 120 });
+    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 90, y: win.getBounds().y + 200 });
     const clickPet = async (expectedTouches: number) => {
-      win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 120 });
-      win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 120, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 200 });
+      win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 200, button: 'left', clickCount: 1 });
       await until(() => pet('document.querySelector("#egg").classList.contains("pressed")'));
-      win.webContents.sendInputEvent({ type: 'mouseUp', x: 90, y: 120, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: 90, y: 200, button: 'left', clickCount: 1 });
       await until(() => Promise.resolve(touches() === expectedTouches));
     };
     await clickPet(1);
@@ -152,7 +152,7 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal(opens, 1, 'a visible input panel is not reopened on further pet clicks');
     assert.equal(count(), experiencesBeforeClicks + 1, 'one completed repeat creates one social experience');
     await until(() => pet('document.querySelector("#egg").dataset.social === "away"'));
-    let dragCursor = { x: win.getBounds().x + 90, y: win.getBounds().y + 120 };
+    let dragCursor = { x: win.getBounds().x + 90, y: win.getBounds().y + 200 };
     screen.getCursorScreenPoint = () => dragCursor;
     await pet('window.petWindow.beginDrag()');
     dragCursor = { x: dragCursor.x + 20, y: dragCursor.y + 10 };
