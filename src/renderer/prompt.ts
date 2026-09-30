@@ -5,6 +5,8 @@
   const list = document.querySelector<HTMLElement>('#timers')!;
   const submit = document.querySelector<HTMLButtonElement>('#submit')!;
   const scheduleList = document.querySelector<HTMLElement>('#schedules')!;
+  const clarification = document.querySelector<HTMLElement>('#schedule-clarification')!;
+  const choices = document.querySelector<HTMLElement>('#schedule-choices')!;
   const confirmation = document.querySelector<HTMLElement>('#schedule-confirmation')!;
   const confirmButton = document.querySelector<HTMLButtonElement>('#schedule-confirm')!;
   const editButton = document.querySelector<HTMLButtonElement>('#schedule-edit')!;
@@ -30,7 +32,7 @@
     submit.textContent = value ? '처리 중…' : '보내기';
   }
   function discardDraft() {
-    draftId = undefined; confirmation.hidden = true;
+    draftId = undefined; confirmation.hidden = true; clarification.hidden = true; choices.replaceChildren();
     void window.schedulePanel.discard().catch(() => {});
   }
   function resetInput() {
@@ -141,6 +143,21 @@
           draftId = reply.draft.id;
           document.querySelector('#schedule-summary')!.textContent = `${reply.draft.kind === 'alarm' ? '알람' : '리마인더'}\n${scheduleTime(reply.draft)}\n${reply.draft.content}`;
           confirmation.hidden = false;
+        } else if (reply.clarification) {
+          for (const choice of reply.clarification.choices) {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'secondary'; button.textContent = choice.label;
+            button.onclick = () => {
+              if (busy) return;
+              input.value = choice.input;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              // A deliberate choice must pass the recent IME Enter guard.
+              submitPressedAt = performance.now();
+              form.requestSubmit(submit);
+            };
+            choices.append(button);
+          }
+          clarification.hidden = false;
         }
       } else {
         const reply = await window.timerPanel.submit(requestId, text);
