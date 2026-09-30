@@ -51,6 +51,8 @@ app.whenReady().then(async () => {
   win.webContents.setBackgroundThrottling(false);
   const run = (script: string) => win.webContents.executeJavaScript(script);
   await until(() => run('!document.querySelector("#food").hidden'));
+  assert.equal(await run('document.querySelector("#life-caption")'), null);
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   const capture = async (name: string) => {
     assert.equal(await run('document.querySelector("#pet-name").textContent'), '별');
     await run('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
@@ -89,6 +91,7 @@ app.whenReady().then(async () => {
   db.exec('DROP TRIGGER fail_baby');
   mouse('mouseDown', 150, 42); await pause(); mouse('mouseMove', 116, 146); await pause(); mouse('mouseUp', 116, 146);
   await until(() => run('document.querySelector("#egg").dataset.life === "approaching"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   assert.equal(count('food_offered'), 1);
   assert.deepEqual(win.getPosition(), originalPosition);
   await run(`window.babyLife.feed(${JSON.stringify(view.offerId)}, 116, 146)`);
@@ -96,6 +99,7 @@ app.whenReady().then(async () => {
   now += T.approach;
   await run('window.babyLife.read().then(s => { window.testBabyState=s; })');
   await until(() => run('document.querySelector("#egg").dataset.life === "eating"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   await capture('eating');
   await new Promise<void>(resolve => { win.webContents.once('did-finish-load', () => resolve()); win.reload(); });
   await until(() => run('document.querySelector("#egg").dataset.life === "eating"'));
@@ -104,6 +108,11 @@ app.whenReady().then(async () => {
   assert.equal(count('meal_finished'), 1);
   now = T.awake;
   await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), false);
+  assert.equal(await run('document.querySelector("#sleep-symbol").getAttribute("aria-hidden")'), 'true');
+  assert.equal(await run('getComputedStyle(document.querySelector("#sleep-symbol")).pointerEvents'), 'none');
+  assert.equal(await run('document.elementFromPoint(137, 92)?.id === "sleep-symbol"'), false);
+  assert.equal(await run('document.querySelector("#egg").getAttribute("aria-label").includes("자고 있습니다")'), true);
   const originalCursor = screen.getCursorScreenPoint;
   screen.getCursorScreenPoint = () => ({ x: 100, y: 100 });
   await run('(async()=>{ window.petWindow.beginDrag(); await window.petWindow.endDrag(); })()');
@@ -112,6 +121,10 @@ app.whenReady().then(async () => {
   assert.equal(babyView(repo.read()!).behavior, 'sleeping');
   assert.equal(await run('document.documentElement.scrollWidth <= innerWidth'), true);
   await capture('sleeping');
+  await new Promise<void>(resolve => { win.webContents.once('did-finish-load', () => resolve()); win.reload(); });
+  await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), false, 'saved sleep is visible after page reload');
+  assert.equal(count('sleep_touch'), 1, 'page reload cannot create care');
   // Isolated local clock/visibility only: never change the OS clock, lock or cursor.
   const at = (hour: number, minute = 10) => new Date(2026, 8, 26, hour, minute).getTime();
   const refresh = () => run('window.babyLife.read()');
@@ -120,7 +133,8 @@ app.whenReady().then(async () => {
   win.isVisible = () => true;
   const savedSocial = socialCount();
   await refresh();
-  await until(() => run('document.querySelector("#life-caption").textContent === "왔어!"'));
+  await until(() => run('document.querySelector("#egg").dataset.reunion === "true"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   assert.equal(await run('document.querySelector("#egg").dataset.dayPeriod'), 'night');
   await capture('night-return');
   await new Promise<void>(resolve => { win.webContents.once('did-finish-load', () => resolve()); win.reload(); });
@@ -137,17 +151,25 @@ app.whenReady().then(async () => {
   await until(() => run('document.querySelector("#egg").dataset.reunion === "true"'));
   now += 4000; await refresh();
   now = at(23); await refresh();
-  await until(() => run('document.querySelector("#life-caption").textContent === "왔어…?"'));
+  await until(() => run('document.querySelector("#egg").dataset.reunion === "true"'));
   assert.equal(await run('document.querySelector("#egg").dataset.life'), 'drowsy');
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   await capture('late-night-return');
   now += 4000; await refresh();
-  await until(() => run('document.querySelector("#life-caption").textContent === "졸려…"'));
+  await until(() => run('document.querySelector("#egg").dataset.reunion === "false"'));
+  assert.equal(await run('document.querySelector("#egg").getAttribute("aria-label").includes("졸려 꾸벅이고 있습니다")'), true);
   now = at(23, 45); await refresh();
   await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), false);
   assert.equal(await run('document.querySelector("#egg").dataset.reunion'), 'false');
+  win.webContents.debugger.attach('1.3');
+  await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  assert.equal(await run('getComputedStyle(document.querySelector("#sleep-symbol")).animationName'), 'none');
+  win.webContents.debugger.detach();
   now = at(31); await refresh();
   await until(() => run('document.querySelector("#egg").dataset.dayPeriod === "day"'));
   assert.equal(await run('document.querySelector("#egg").dataset.life'), 'resting');
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true, 'zZ disappears after waking');
   win.webContents.debugger.attach('1.3');
   await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   assert.equal(await run('getComputedStyle(document.querySelector(".shell")).animationName'), 'none');
