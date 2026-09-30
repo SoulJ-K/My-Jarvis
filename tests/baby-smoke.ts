@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
-import { BABY_STAGE, BABY_TIMING as T, babyApproachDuration, babyView } from '../src/pet/baby-life';
+import { BABY_STAGE, BABY_TIMING as T, babyApproachDuration, babyView, cycle } from '../src/pet/baby-life';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { createPetWindow } from '../src/main/windows';
 const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-baby-smoke-'));
@@ -156,9 +156,41 @@ app.whenReady().then(async () => {
   await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
   assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), false, 'saved sleep is visible after page reload');
   assert.equal(count('sleep_touch'), 1, 'page reload cannot create care');
+  const refresh = () => run('window.babyLife.read()');
+  // Distress is retained through sleep. Wake plays once before a new meal, and
+  // the existing distance expression returns after that meal completes.
+  for (let i = 1; i <= 3; i++) { now = T.awake + i * 1000; repo.apply({ type: 'touch' }); }
+  now = cycle;
+  const awake = await refresh();
+  await until(() => run('document.querySelector("#egg").dataset.waking === "true"'));
+  assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true, 'zZ ends with actual sleep');
+  assert.equal(await run('getComputedStyle(document.querySelector("#egg")).animationName'), 'baby-wake-body');
+  assert.equal(await run('document.querySelector("#egg").getAttribute("aria-label").includes("깨어나고")'), true);
+  await capture('waking');
+  assert.equal(count('sleep_completed'), 1);
+  await refresh(); await refresh();
+  assert.equal(await run('document.querySelector("#egg").getAnimations().filter(a => a.animationName === "baby-wake-body").length'), 1,
+    'repeated reads do not schedule another wake');
+  assert.equal(awake.offerId, null, 'the earlier meal still delays hunger');
+  now += approachMs + T.chew;
+  const newOffer = await refresh();
+  assert.ok(newOffer.offerId);
+  await run(`window.babyLife.feed(${JSON.stringify(newOffer.offerId)}, 220, 190)`);
+  assert.equal(await run('document.querySelector("#egg").dataset.waking'), 'true');
+  assert.equal(await run('document.querySelector(".shadow").dataset.approaching'), 'false', 'meal waits for wake presentation');
+  await until(() => run('document.querySelector("#egg").dataset.waking === "false"'));
+  assert.equal(await run('document.querySelector("#egg").dataset.life'), 'approaching');
+  assert.equal(await run('document.querySelector(".shadow").dataset.approaching'), 'true');
+  assert.equal(await attached(), true, 'name and orb remain attached during wake and approach');
+  now += babyApproachDuration({ x: 154, y: 127 }, 220, 190) + T.chew;
+  await refresh();
+  await until(() => run('document.querySelector("#egg").dataset.social === "away"'));
+  await new Promise<void>(resolve => { win.webContents.once('did-finish-load', () => resolve()); win.reload(); });
+  await until(() => run('document.querySelector("#egg").dataset.life === "resting"'));
+  assert.equal(await run('document.querySelector("#egg").dataset.waking'), 'false', 'reload after sleep completion cannot replay wake');
+  assert.equal(count('sleep_completed'), 1, 'reload cannot duplicate sleep history');
   // Isolated local clock/visibility only: never change the OS clock, lock or cursor.
   const at = (hour: number, minute = 10) => new Date(2026, 8, 26, hour, minute).getTime();
-  const refresh = () => run('window.babyLife.read()');
   const socialCount = () => db.prepare('SELECT COUNT(*) AS n FROM baby_social_experience').get()!.n;
   now = at(20);
   win.isVisible = () => true;
@@ -196,16 +228,32 @@ app.whenReady().then(async () => {
   win.webContents.debugger.attach('1.3');
   await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   assert.equal(await run('getComputedStyle(document.querySelector("#sleep-symbol")).animationName'), 'none');
-  win.webContents.debugger.detach();
   now = at(31); await refresh();
   await until(() => run('document.querySelector("#egg").dataset.dayPeriod === "day"'));
   assert.equal(await run('document.querySelector("#egg").dataset.life'), 'resting');
   assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true, 'zZ disappears after waking');
-  win.webContents.debugger.attach('1.3');
-  await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  assert.equal(await run('document.querySelector("#egg").dataset.waking'), 'false', 'reduced motion skips the wake movement');
   assert.equal(await run('getComputedStyle(document.querySelector(".shell")).animationName'), 'none');
   win.webContents.debugger.detach();
   await capture('morning-return');
+  // Exercise presentation precedence without altering the temporary pet's
+  // stored life or creating a synthetic relationship experience.
+  win.isVisible = () => false;
+  const beforeVisualOnly = socialCount();
+  const visualBase = await refresh();
+  const visualSleep = { ...visualBase, revision: visualBase.revision + 100,
+    behavior: 'sleeping', offerId: null, meal: null, reunion: false,
+    social: { ...visualBase.social, motion: 'still', orb: null } };
+  win.webContents.send('baby:state', visualSleep);
+  await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
+  win.webContents.send('baby:state', { ...visualSleep, revision: visualSleep.revision + 1,
+    behavior: 'resting', reunion: true });
+  await until(() => run('document.querySelector("#egg").dataset.waking === "true"'));
+  assert.equal(await run('document.querySelector("#egg").dataset.reunion'), 'false', 'wake precedes return motion');
+  await until(() => run('document.querySelector("#egg").dataset.waking === "false"'));
+  assert.equal(await run('document.querySelector("#egg").dataset.reunion'), 'true', 'return follows wake');
+  assert.equal(await run('getComputedStyle(document.querySelector(".shell")).animationName'), 'baby-joy');
+  assert.equal(socialCount(), beforeVisualOnly, 'presentation-only wake and return do not create experience');
   for (const position of [{ x: 8, y: 8 }, { x: 308, y: 200 }]) {
     await run(`(() => {
       const body = document.querySelector('#egg'); body.style.transition = 'none';
