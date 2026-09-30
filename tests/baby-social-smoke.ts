@@ -11,7 +11,12 @@ import { SOCIAL_TIMING as T } from '../src/pet/baby-social';
 import { petDatabasePath } from '../src/storage/pet-repository';
 const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-social-ui-'));
 app.setPath('userData', directory);
-app.on('quit', () => rmSync(directory, { recursive: true, force: true }));
+app.on('quit', () => {
+  // Chromium may still be finishing cache writes during quit. Cleanup failure
+  // must stay a reported test warning, never an uncaught native error dialog.
+  try { rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch { console.warn('WARN: temporary test directory cleanup incomplete; retained for later cleanup.'); }
+});
 let now = 1_000_000;
 Date.now = () => now;
 const lifecycle = new LifecycleRepository(directory, { namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true });
