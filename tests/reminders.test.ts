@@ -42,6 +42,53 @@ test('explicit dates, 24-hour time, midnight/noon, and next-day year boundary pa
     if (noon.ok) assert.equal(noon.draft.localDateTime,'2027-01-01 12:00');
   }
 }));
+test('natural one-time requests keep their content and use the request time to resolve a spoken hour', () => inZone('Asia/Seoul', () => {
+  const now = new Date(2026, 8, 26, 14).getTime();
+  for (const input of [
+    '오늘 여섯시 반에 퇴실체크 알람해줘',
+    '오늘 18:30분에 퇴실체크 알람해줘',
+    '오늘 18:30 알람 퇴실체크',
+    '퇴실체크 알람해줘 오늘 여섯시 반에',
+    '오늘 퇴실체크를 18:30분에 알람해줘',
+    '오늘 여섯시 삼십분에 퇴실체크 알람해줘',
+    '여섯시 반에 퇴실체크 알람해줘',
+    '오늘 18:30분에 퇴실체크 알람해줘!',
+  ]) {
+    const result = parseSchedule('natural', input, now);
+    assert.equal(result.ok, true, input);
+    if (result.ok) {
+      assert.equal(result.draft.localDateTime, '2026-09-26 18:30');
+      assert.equal(result.draft.content, '퇴실체크');
+      assert.equal(result.draft.kind, 'alarm');
+    }
+  }
+  const ambiguous = parseSchedule('ambiguous', '내일 여섯시 반에 퇴실체크 알람해줘', now);
+  assert.equal(ambiguous.ok, false);
+  if (!ambiguous.ok) {
+    assert.match(ambiguous.message, /오전·오후/);
+    assert.deepEqual(ambiguous.clarification?.choices.map(choice => choice.label), ['오전 6:30', '오후 6:30']);
+    for (const [index, choice] of (ambiguous.clarification?.choices ?? []).entries()) {
+      const selected = parseSchedule('choice', choice.input, now);
+      assert.equal(selected.ok, true);
+      if (selected.ok) {
+        assert.equal(selected.draft.localDateTime, `2026-09-27 ${index === 0 ? '06' : '18'}:30`);
+        assert.equal(selected.draft.content, '퇴실체크');
+      }
+    }
+  }
+  for (const input of ['오늘 내일 18:30 알람 퇴실체크', '오늘 18:30 알람 퇴실체크 19:00', '오늘 18:30 알람 리마인더 퇴실체크'])
+    assert.equal(parseSchedule('extra', input, now).ok, false, input);
+  const late = parseSchedule('late', '여섯시 반에 퇴실체크 알람해줘', new Date(2026, 8, 26, 19).getTime());
+  assert.equal(late.ok, false);
+  if (!late.ok) assert.match(late.message, /이미 지난 시각/);
+  const reminder = parseSchedule('reminder', '서류 확인 리마인더해줘 내일 오후 세시 반에', now);
+  assert.equal(reminder.ok, true);
+  if (reminder.ok) {
+    assert.equal(reminder.draft.kind, 'reminder');
+    assert.equal(reminder.draft.content, '서류 확인');
+    assert.equal(reminder.draft.localDateTime, '2026-09-27 15:30');
+  }
+}));
 test('missing dates/meridiem/content and unsupported recurring or fuzzy input ask again without a draft', () => {
   const now = new Date(2026,8,26,9).getTime();
   for (const input of ['',null,'알람','3시에 알려줘','내일 3시 알람','오늘 10:00 리마인더','매일 오전 7시 알람',
@@ -66,6 +113,31 @@ test('preview does not persist; confirm saves the exact original date across mid
   assert.equal(preview.ok,true); assert.deepEqual(f.service.views(),[]);
   f.advance(2 * 3600000); assert.equal(f.service.confirm('a').ok,true);
   if (preview.ok) assert.equal(f.service.views()[0].dueAt,preview.draft.dueAt);
+});
+test('natural alarm preview stays unsaved until confirmation and repeated confirmation makes one row', t => {
+  const f = fixture(t);
+  f.advance(5 * 3600000);
+  const preview = f.service.preview('natural', '오늘 여섯시 반에 퇴실체크 알람해줘');
+  assert.equal(preview.ok, true);
+  assert.deepEqual(f.service.views(), []);
+  assert.equal(f.service.confirm('natural').ok, true);
+  assert.equal(f.service.confirm('natural').ok, true);
+  assert.equal(f.service.views().length, 1);
+  assert.equal(f.service.views()[0].content, '퇴실체크');
+});
+test('meridiem choice still requires the registration button', t => {
+  const f = fixture(t);
+  f.advance(5 * 3600000);
+  const ambiguous = f.service.preview('choice', '내일 여섯시 반에 퇴실체크 알람해줘');
+  assert.equal(ambiguous.ok, false);
+  assert.equal(f.service.confirm('choice').ok, false);
+  assert.deepEqual(f.service.views(), []);
+  if (ambiguous.ok) return;
+  const selected = f.service.preview('choice', ambiguous.clarification!.choices[1].input);
+  assert.equal(selected.ok, true);
+  assert.deepEqual(f.service.views(), []);
+  assert.equal(f.service.confirm('choice').ok, true);
+  assert.equal(f.service.views().length, 1);
 });
 test('discarded, invalidated and expired previews cannot register', t => {
   const f = fixture(t); f.service.preview('a','오늘 10:00 알람'); f.service.discard();

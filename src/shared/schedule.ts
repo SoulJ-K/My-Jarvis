@@ -16,5 +16,9 @@ export interface ScheduleRecord extends ScheduleDraft {
   systemDelivery: SystemDelivery;
   appDisplayed: boolean;
 }
-export type SchedulePreview = { ok: true; draft: ScheduleDraft; message: string } | { ok: false; message: string };
+export type SchedulePreview = { ok: true; draft: ScheduleDraft; message: string } | {
+  ok: false;
+  message: string;
+  clarification?: { choices: { label: string; input: string }[] };
+};
 export interface ScheduleReply { ok: boolean; message: string }
