@@ -50,6 +50,24 @@ test('repeated touch records once, hides orb, gives space, and naturally recover
   s = advance(s, T.recovery + 100, true, tick).state;
   assert.equal(s.strain, 0); assert.equal(s.familiarity, bond);
 });
+test('one touch is welcome, spaced touches reset, and sleeping distance remains visible after wake', () => {
+  let s = advance(initialBabySocial(), 0, true, { type: 'touch' }).state;
+  assert.equal(socialView(s, 'orb', true).motion, 'tilt');
+  s = advance(s, T.touchWindow + 1, true, { type: 'touch' }).state;
+  assert.equal(s.touches, 1);
+  assert.equal(socialView(s, 'orb', true).motion, 'tilt');
+  const wake = T.touchWindow + BABY_TIMING.sleep;
+  for (let i = 0; i < 3; i++) s = advance(s, T.touchWindow + 2 + i, false, { type: 'touch' }, wake).state;
+  assert.equal(s.distanceUntil, wake + T.distance);
+  assert.equal(socialView(s, 'orb', false).motion, 'still');
+  s = advance(s, wake, true, tick).state;
+  assert.equal(socialView(s, 'orb', true).motion, 'away');
+  assert.equal(socialView(s, 'orb', false, true).motion, 'away', 'an awake but drowsy baby still shows distance');
+  s = advance(s, wake + T.distance, true, tick).state;
+  assert.notEqual(socialView(s, 'orb', true).motion, 'away');
+  s = advance(s, wake + T.recovery, true, tick).state;
+  assert.equal(s.strain, 0);
+});
 test('spaced positive experience changes proximity slowly; spam praise cannot farm closeness', () => {
   let s = initialBabySocial();
   for (let i = 0; i < 100; i++) s = advance(s, i, true, { type: 'praise' }).state;
@@ -118,6 +136,24 @@ test('hunger and autonomous sleep do not become orb emotions; repeated sleep tou
   for (let i = 0; i < 5; i++) view = repo.view(repo.apply({ type: 'touch' }));
   assert.equal(view.behavior, 'sleeping'); assert.equal(view.social.orb, null);
   assert.equal(babyView(repo.read()!).behavior, 'sleeping'); repo.close();
+});
+test('sleeping repeat persists through restart and shows finite distance after natural wake', t => {
+  const directory = seed(t); let now = 0;
+  let repo = new BabyLifeRepository(directory, () => now);
+  now = BABY_TIMING.awake + 1000;
+  for (let i = 0; i < 3; i++) { repo.apply({ type: 'touch' }); now++; }
+  assert.equal(repo.view(repo.read()!).behavior, 'sleeping');
+  assert.equal(repo.view(repo.read()!).social.motion, 'still');
+  repo.close();
+  now = BABY_TIMING.awake + BABY_TIMING.sleep;
+  repo = new BabyLifeRepository(directory, () => now);
+  let view = repo.view(repo.apply(tick));
+  assert.equal(view.behavior, 'resting');
+  assert.equal(view.social.motion, 'away');
+  now += T.distance;
+  view = repo.view(repo.apply(tick));
+  assert.notEqual(view.social.motion, 'away');
+  repo.close();
 });
 test('invalid social snapshot and clock fail closed without replacing history', t => {
   assert.throws(() => advance(initialBabySocial(), -1, true, tick), /CLOCK_INVALID/);

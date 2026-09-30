@@ -1,7 +1,7 @@
 import { advanceBabySocial, initialBabySocial, socialView, validateBabySocial, type BabySocial, type SocialCommand } from '../pet/baby-social';
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { advanceBabyLife, babyView, initialBabyLife, validateBabyLife, type BabyLife, type BabyCommand } from '../pet/baby-life';
+import { advanceBabyLife, babyView, cycle, initialBabyLife, validateBabyLife, type BabyLife, type BabyCommand } from '../pet/baby-life';
 import { loadOrCreateEgg, petDatabasePath } from './pet-repository';
 
 /** Same pet DB: identity remains unchanged. State and experiences commit together. */
@@ -85,7 +85,9 @@ export class BabyLifeRepository {
   view(state: BabyLife) {
     const lifecycle = JSON.parse(String(this.db.prepare('SELECT snapshot FROM lifecycle WHERE singleton=1').get()!.snapshot));
     if (typeof lifecycle.orbId !== 'string') throw new Error('ORB_MISSING');
-    return { ...babyView(state), social: socialView(this.readSocial(), lifecycle.orbId, babyView(state).behavior === 'resting') };
+    const view = babyView(state);
+    return { ...view, social: socialView(this.readSocial(), lifecycle.orbId,
+      view.behavior === 'resting', view.behavior === 'drowsy') };
   }
   apply(command: BabyCommand | SocialCommand): BabyLife {
     try {
@@ -99,8 +101,10 @@ export class BabyLifeRepository {
         const socialBefore = this.readSocial();
         const bodyCommand = command.type === 'feed' || command.type === 'touch' ? command : { type: 'tick' } as const;
         const { state, events } = advanceBabyLife(before, now, bodyCommand);
-        const social = advanceBabySocial(socialBefore, state.elapsedMs, babyView(state).behavior === 'resting',
-          command.type === 'feed' ? { type: 'stop' } : command);
+        const behavior = babyView(state).behavior;
+        const sleepEndsAt = behavior === 'sleeping' ? state.elapsedMs + cycle - state.elapsedMs % cycle : undefined;
+        const social = advanceBabySocial(socialBefore, state.elapsedMs, behavior === 'resting',
+          command.type === 'feed' ? { type: 'stop' } : command, sleepEndsAt);
         if (JSON.stringify(social.state) !== JSON.stringify(socialBefore) && state.revision === saved.revision) state.revision++;
         if (state.revision === saved.revision) return state;
         this.db.prepare('INSERT INTO baby_life VALUES(1, ?) ON CONFLICT(singleton) DO UPDATE SET snapshot=excluded.snapshot').run(JSON.stringify(state));

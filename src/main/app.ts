@@ -104,7 +104,8 @@ export function startJarvis(options: {
       if (lifecycle.read().completed !== null) throw new Error('EGG_CARE_ENDED');
       life.care(kind);
       checkpoint();
-    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby, () => panels?.open());
+    }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby,
+    () => { if (panels && !panels.prompt.isVisible()) panels.open(); });
     win.on('closed', () => app.quit());
     let creatingHatch: Promise<void> | undefined;
     syncHatch = () => {
