@@ -148,9 +148,9 @@ test('offline production restarts preserve egg care, witnessed hatch, baby exper
   const meal = offlineLaunch(directory, 'feed', mealAt);
   assert.equal(meal.baby?.behavior, 'approaching');
   assert.deepEqual(meal.experiences.map(row => row.kind), ['food_offered']);
-  const eating = offlineLaunch(directory, 'inspect', mealAt + BABY_TIMING.approach);
+  const eating = offlineLaunch(directory, 'inspect', mealAt + BABY_TIMING.approachMin);
   assert.equal(eating.baby?.behavior, 'eating');
-  const finished = offlineLaunch(directory, 'inspect', mealAt + BABY_TIMING.meal);
+  const finished = offlineLaunch(directory, 'inspect', mealAt + BABY_TIMING.approachMin + BABY_TIMING.chew);
   assert.equal(finished.baby?.behavior, 'resting');
   assert.deepEqual(finished.experiences.map(row => row.kind), ['food_offered', 'meal_finished']);
 

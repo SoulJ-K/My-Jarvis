@@ -33,6 +33,7 @@ export function startJarvis(options: {
   let hatch: Awaited<ReturnType<typeof createHatchWindow>> | undefined;
   let hatching = false;
   let quitting = false;
+  let currentStage: 'egg' | 'baby' = 'egg';
   let syncHatch = async () => {};
   let hatchHasStarted = () => false;
   const openHatch = () => {
@@ -52,7 +53,7 @@ export function startJarvis(options: {
   }
   const reset = () => {
     if (!win || win.isDestroyed()) return;
-    const position = initialPosition();
+    const position = initialPosition(currentStage);
     win.setPosition(position.x, position.y);
     if (win.webContents.isCrashed()) {
       recordPetDiagnostic('pet_renderer_manual_reload');
@@ -80,6 +81,7 @@ export function startJarvis(options: {
       namePolicy: { trim: true, maxCodePoints: 20 },
     });
     let state = lifecycle.read();
+    currentStage = state.stage;
     hatchHasStarted = () => lifecycle.read().completed !== null;
     const eggNow = options.eggNow ?? Date.now;
     hatching = state.ready && state.name === null;
@@ -126,6 +128,7 @@ export function startJarvis(options: {
       if (creatingHatch) return creatingHatch;
       creatingHatch = createHatchWindow(lifecycle, show, saved => {
         state = saved;
+        currentStage = saved.stage;
         hatching = false;
         // The idle pet must load its committed baby snapshot before becoming visible.
         win!.setTitle('Jarvis Pet · 아기');

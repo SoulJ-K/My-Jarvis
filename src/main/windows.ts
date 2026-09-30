@@ -1,4 +1,5 @@
-import { babyDayPeriod, validFoodPoint } from '../pet/baby-life';
+import { BABY_STAGE, babyApproachDuration, babyDayPeriod, babyTargetForFood, validFoodPoint,
+  type BabyPosition } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import { appendFileSync, lstatSync, writeFileSync } from 'node:fs';
@@ -30,25 +31,31 @@ export function recordPetDiagnostic(event: string) {
   } catch { /* Diagnostics must never prevent pet startup or shutdown. */ }
 }
 
-function clampPosition(point: Electron.Point, area: Electron.Rectangle) {
+function stageSize(stage: 'egg' | 'baby') {
+  return stage === 'baby' ? { width: BABY_STAGE.width, height: BABY_STAGE.height } : { width: WIDTH, height: HEIGHT };
+}
+function clampPosition(point: Electron.Point, area: Electron.Rectangle, size: { width: number; height: number }) {
   // Electron cursor, workArea and window positions all use logical pixels (DIP).
   return {
-    x: Math.round(Math.max(area.x, Math.min(area.x + area.width - WIDTH, point.x))),
-    y: Math.round(Math.max(area.y, Math.min(area.y + area.height - HEIGHT, point.y))),
+    x: Math.round(Math.max(area.x, Math.min(area.x + area.width - size.width, point.x))),
+    y: Math.round(Math.max(area.y, Math.min(area.y + area.height - size.height, point.y))),
   };
 }
 
-export function initialPosition() {
+export function initialPosition(stage: 'egg' | 'baby' = 'egg') {
   const area = screen.getPrimaryDisplay().workArea;
-  return clampPosition({ x: area.x + area.width - WIDTH - 48, y: area.y + area.height - HEIGHT - 32 }, area);
+  const size = stageSize(stage);
+  return clampPosition({ x: area.x + area.width - size.width - 48,
+    y: area.y + area.height - size.height - 32 }, area, size);
 }
 
 export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
   currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository,
   onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true) {
   const page = path.join(__dirname, '../renderer/index.html');
+  const initialSize = stageSize(pet.stage);
   const win = new BrowserWindow({
-    ...initialPosition(), width: WIDTH, height: HEIGHT,
+    ...initialPosition(pet.stage), ...initialSize,
     title: pet.stage === 'baby' ? 'Jarvis Pet · 아기' : 'Jarvis Pet · 임시 알',
     // focusable:false alone does not prevent macOS from activating the app on click.
     // A non-activating panel keeps the current app active while the egg receives mouse events.
@@ -103,7 +110,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     if (drag) cancelGesture();
     const bounds = win.getBounds();
     const area = screen.getDisplayMatching(bounds).workArea;
-    const position = clampPosition(bounds, area);
+    const position = clampPosition(bounds, area, bounds);
     if (position.x !== bounds.x || position.y !== bounds.y) {
       win.setPosition(position.x, position.y, false);
       recordPetDiagnostic('pet_window_repositioned');
@@ -128,7 +135,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     drag.move(cursor, performance.now());
     if (!drag.moved || drag.stroking) return;
     const area = screen.getDisplayNearestPoint(cursor).workArea;
-    const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area);
+    const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area, win.getBounds());
     win.setPosition(position.x, position.y, false);
   };
   const start = (event: IpcMainEvent, ...args: unknown[]) => {
@@ -177,12 +184,16 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     cancelGesture();
   };
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
+  let babyPosition: BabyPosition = { x: BABY_STAGE.startX, y: BABY_STAGE.startY };
+  let activeMealTarget: BabyPosition | null = null;
   // Capture the saved observation before the first page read advances life.
   const returnBrain = new BabyReturnBrain(baby?.read()?.observedAtMs ?? null);
   const publishBaby = (view: ReturnType<BabyLifeRepository['view']>) => {
+    if (view.meal) activeMealTarget = babyTargetForFood(view.meal.x, view.meal.y);
+    else if (activeMealTarget) { babyPosition = activeMealTarget; activeMealTarget = null; }
     const reunion = returnBrain.observe(Date.now(), win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked,
       powerMonitor.getSystemIdleTime() * 1000);
-    const presentation = { ...view, reunion };
+    const presentation = { ...view, position: babyPosition, reunion };
     if (!win.isDestroyed()) win.webContents.send('baby:state', presentation);
     return presentation;
   };
@@ -207,10 +218,11 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
         babyDayPeriod(Date.now()) === 'day';
       const cursor = active ? screen.getCursorScreenPoint() : null;
       const bounds = win.getBounds();
-      const cursorNear = Boolean(cursor && Math.hypot(cursor.x - bounds.x - 90, cursor.y - bounds.y - 120) <= 75);
+      const cursorNear = Boolean(cursor && Math.hypot(cursor.x - bounds.x - babyPosition.x - 52,
+        cursor.y - bounds.y - babyPosition.y - 46) <= 75);
       const view = baby!.view(baby!.apply({ type: 'tick', active, cursorNear }));
       // Direction is transient presentation only; cursor coordinates never enter storage.
-      win.webContents.send('baby:direction', cursor && cursor.x < bounds.x + 90 ? 'left' : 'right');
+      win.webContents.send('baby:direction', cursor && cursor.x < bounds.x + babyPosition.x + 52 ? 'left' : 'right');
       publishBaby(view);
     }
     catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
@@ -227,7 +239,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     const [offerId, x, y] = args;
     if (!validSender(event) || !babyReady() || args.length !== 3 || typeof offerId !== 'string' ||
       !/^food:[0-9]{1,16}$/.test(offerId) || !validFoodPoint(x, y)) throw new Error('BABY_REQUEST_DENIED');
-    return publishBaby(baby!.view(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number })));
+    const approachMs = babyApproachDuration(babyPosition, x as number, y as number);
+    return publishBaby(baby!.view(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number, approachMs })));
   });
   ipcMain.on('egg:hover', hover);
   ipcMain.on('egg:drag-start', start);
@@ -292,6 +305,14 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     if (isMainFrame && code !== -3) recordPetDiagnostic('pet_renderer_load_failed');
   });
   win.webContents.on('did-finish-load', () => {
+    const size = stageSize(currentPet().stage);
+    const bounds = win.getBounds();
+    if (bounds.width !== size.width || bounds.height !== size.height) {
+      const area = screen.getDisplayMatching(bounds).workArea;
+      const point = clampPosition({ x: bounds.x + Math.round((bounds.width - size.width) / 2),
+        y: bounds.y + Math.round((bounds.height - size.height) / 2) }, area, size);
+      win.setBounds({ ...point, ...size }, false);
+    }
     if (!recovering && recoveryAttempts < 2) return;
     recovering = false;
     recordPetDiagnostic('pet_renderer_recovered');
