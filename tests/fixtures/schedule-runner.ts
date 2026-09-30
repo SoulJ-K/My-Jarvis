@@ -4,15 +4,26 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
-import { app, BrowserWindow, type Session } from 'electron';
+import { app, BrowserWindow, dialog, type Menu, type Session } from 'electron';
 import { DatabaseSync } from 'node:sqlite';
 import { petDatabasePath } from '../../src/storage/pet-repository';
 import { nextHatchStep, type Lifecycle } from '../../src/pet/lifecycle';
 const [directory, mode, at] = process.argv.slice(2);
 const continuity = mode?.startsWith('continuity-');
+const hatchStep = mode === 'continuity-step';
 if (!directory || !['register','inspect','cancel','ack', 'continuity-register', 'continuity-inspect',
   'continuity-step', 'continuity-feed', 'continuity-praise', 'continuity-deliver', 'continuity-ack'].includes(mode)) throw new Error('Invalid arguments');
 app.setPath('userData',directory);
+let trayMenu: Menu | undefined;
+if (hatchStep) {
+  const visible = new Set<number>();
+  BrowserWindow.prototype.show = function () { visible.add(this.id); this.emit('show'); };
+  BrowserWindow.prototype.showInactive = function () { visible.add(this.id); this.emit('show'); };
+  BrowserWindow.prototype.hide = function () { visible.delete(this.id); this.emit('hide'); };
+  BrowserWindow.prototype.isVisible = function () { return visible.has(this.id); };
+  BrowserWindow.prototype.focus = function () {};
+  dialog.showErrorBox = (title, message) => { console.error(`HIDDEN_DIALOG:${title}: ${message}`); };
+}
 let now = Number(at);
 let notices = 0;
 let nodeRequests = 0;
@@ -46,9 +57,22 @@ if (continuity) {
   });
 }
 const timeout = setTimeout(() => app.exit(2),15000);
-const lifecycle = require('../../src/main/app') as typeof import('../../src/main/app');
+const modules = require('node:module');
+const originalLoad = modules._load;
+const appModule = require.resolve('../../src/main/app');
+modules._load = function (request: string, parent: { filename: string }, ...args: unknown[]) {
+  if (hatchStep && request === 'electron' && parent.filename === appModule) {
+    return { ...originalLoad.call(this, request, parent, ...args), Tray: class {
+      setTitle() {} setToolTip() {} destroy() {}
+      setContextMenu(menu: Menu) { trayMenu = menu; }
+    } };
+  }
+  return originalLoad.call(this, request, parent, ...args);
+};
+let lifecycle: typeof import('../../src/main/app');
+try { lifecycle = require('../../src/main/app'); } finally { modules._load = originalLoad; }
 const start = lifecycle.startJarvis;
-lifecycle.startJarvis = () => start({ show:false,
+lifecycle.startJarvis = () => start({ show:hatchStep,
   ...(continuity ? { notifySchedule: (_item: unknown, report: (state: 'failed') => void) => { notices++; report('failed'); } } : {}),
   onReady: async eggWindow => {
   try {
@@ -64,21 +88,20 @@ lifecycle.startJarvis = () => start({ show:false,
     };
     const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
     const state = (): Lifecycle => JSON.parse(String(db.prepare('SELECT snapshot FROM lifecycle').get()!.snapshot));
-    const hatch = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('/hatch.html'));
     if (mode === 'continuity-step') {
-      assert.ok(hatch);
       const saved = state();
       const step = nextHatchStep(saved);
-      // Synthetic visibility allows a witnessed step without showing/focusing a window.
-      hatch.isVisible = () => true;
-      hatch.emit('show');
-      const hatchRun = (code: string) => hatch.webContents.executeJavaScript(code);
-      await until(() => hatchRun(`document.querySelector('#hatch').dataset.step === ${JSON.stringify(step)}`));
-      if (step === 'naming') await hatchRun('document.querySelector("input").value="별"; document.querySelector("form").requestSubmit()');
-      else await hatchRun('document.querySelector("#hatch button").click()');
+      assert.ok(trayMenu);
+      (trayMenu!.items[1].click as () => void)();
+      await until(async () => (await petRun('window.hatch.read()')).available);
+      await until(() => petRun(`document.querySelector('#hatch-overlay').dataset.step === ${JSON.stringify(step)}`));
+      if (step === 'naming') {
+        await until(() => petRun('Boolean(document.querySelector("#hatch-overlay form"))'));
+        await petRun('document.querySelector("#hatch-overlay input").value="별"; document.querySelector("#hatch-overlay form").requestSubmit()');
+      }
       await until(async () => state().revision === saved.revision + 1);
       if (step === 'naming') await until(() => petRun('document.querySelector("#pet-name").textContent === "별"'));
-      hatch.isVisible = () => false;
+      eggWindow.hide();
     }
     if (mode === 'continuity-register') {
       eggWindow.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 95, button: 'left', clickCount: 1 });

@@ -1,33 +1,50 @@
-import { BrowserWindow, ipcMain, powerMonitor, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, ipcMain, powerMonitor, screen, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { hatchScenes, type HatchScene, type Lifecycle } from '../pet/lifecycle';
 import type { LifecycleRepository } from '../storage/lifecycle-repository';
 import type { HatchView } from '../shared/hatch';
 
-/** A focusable, explicitly paced scene window. The repository owns identity and
- * committed progress; the main process owns availability and the resume epoch. */
-export async function createHatchWindow(store: LifecycleRepository, show: boolean,
-  onNamed: (state: Lifecycle) => void) {
-  const page = path.join(__dirname, '../renderer/hatch.html');
-  const win = new BrowserWindow({ width: 420, height: 560, minWidth: 360, minHeight: 520,
-    show: false, title: 'Jarvis Pet · 첫 만남', autoHideMenuBar: true,
-    maximizable: false, fullscreenable: false,
-    webPreferences: { preload: path.join(__dirname, '../preload/hatch.js'),
-      // Non-persistent session isolates hatch permission policy from assistants.
-      partition: 'jarvis-hatch',
-      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false } });
+const BABY_SIZE = { width: 420, height: 300 };
+const expandedScene = (state: Lifecycle) => state.completed === 'baby' || state.completed === 'contact';
+
+/** Controls a witnessed sequence inside the existing transparent pet window. */
+export async function createHatchWindow(store: LifecycleRepository, win: BrowserWindow, show: boolean,
+  onNamed: (state: Lifecycle, babyPosition: { x: number; y: number }) => void) {
+  const page = path.join(__dirname, '../renderer/index.html');
   let disposed = false;
+  let active = false;
   let locked = powerMonitor.getSystemIdleState(1) === 'locked';
   let suspended = false;
+  // createPetWindow has awaited loadFile before this controller is attached.
+  let loading = false;
   let epoch = 0;
-  let loading = true;
-  const available = () => !disposed && !loading && !locked && !suspended &&
+  let layout = { x: 0, y: 0, expanded: false };
+  const available = () => active && !disposed && !loading && !locked && !suspended &&
     !win.isDestroyed() && win.isVisible() && !win.isMinimized();
-  const view = (): HatchView => ({ state: store.read(), available: available(), epoch });
+  const view = (): HatchView => ({ state: store.read(), available: available(), epoch, layout });
   const changed = () => {
     epoch++;
     if (!disposed && !win.isDestroyed()) win.webContents.send('hatch:changed');
+  };
+  const expand = () => {
+    if (layout.expanded || win.isDestroyed()) return;
+    const bounds = win.getBounds();
+    // A restarted sequence already at the baby checkpoint starts in the baby-size window.
+    if (bounds.width === BABY_SIZE.width && bounds.height === BABY_SIZE.height) {
+      layout = { x: 120, y: 50, expanded: true };
+      return;
+    }
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+    const x = Math.round(Math.max(area.x, Math.min(area.x + area.width - BABY_SIZE.width,
+      centerX - BABY_SIZE.width / 2)));
+    const y = Math.round(Math.max(area.y, Math.min(area.y + area.height - BABY_SIZE.height,
+      centerY - BABY_SIZE.height / 2)));
+    win.setBounds({ x, y, ...BABY_SIZE }, false);
+    // The art is offset by the actual window shift, including edge clamping.
+    layout = { x: bounds.x - x, y: bounds.y - y, expanded: true };
   };
   const lock = () => { locked = true; changed(); };
   const unlock = () => { locked = false; changed(); };
@@ -55,36 +72,51 @@ export async function createHatchWindow(store: LifecycleRepository, show: boolea
   ipcMain.handle('hatch:witness', (event, ...args: unknown[]) => {
     mutation(event, args);
     if (!hatchScenes.includes(args[2] as HatchScene)) throw new Error('HATCH_REQUEST_DENIED');
-    store.apply(Number(args[0]), { type: 'witness', scene: args[2] as HatchScene });
+    const saved = store.apply(Number(args[0]), { type: 'witness', scene: args[2] as HatchScene });
+    if (saved.completed === 'baby') expand();
+    if (saved.completed === 'contact') {
+      win.setFocusable(true);
+      win.setIgnoreMouseEvents(false);
+      win.show(); win.focus();
+    }
     return view();
   });
   ipcMain.handle('hatch:name', (event, ...args: unknown[]) => {
     mutation(event, args);
-    // Transport bound only; product name policy is enforced by the repository.
     if (typeof args[2] !== 'string' || args[2].length > 1024) throw new Error('HATCH_REQUEST_DENIED');
     const saved = store.apply(Number(args[0]), { type: 'name', name: args[2] });
     const result = view();
-    if (saved.name !== null) { onNamed(saved); win.hide(); }
+    if (saved.name !== null) {
+      active = false;
+      changed();
+      // Return the committed result to the naming page before its baby reload.
+      setTimeout(() => {
+        if (disposed || win.isDestroyed()) return;
+        win.setFocusable(false);
+        win.setIgnoreMouseEvents(true, { forward: true });
+        onNamed(saved, { x: 38 + layout.x, y: 76 + layout.y });
+      }, 0);
+    }
     return result;
   });
-  win.on('close', event => { if (!disposed) { event.preventDefault(); win.hide(); } });
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', event => event.preventDefault());
-  win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  win.webContents.session.setPermissionCheckHandler(() => false);
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     powerMonitor.removeListener('lock-screen', lock); powerMonitor.removeListener('unlock-screen', unlock);
     powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume);
     for (const channel of ['hatch:read', 'hatch:witness', 'hatch:name']) ipcMain.removeHandler(channel);
-    if (!win.isDestroyed()) win.destroy();
   };
-  try { await win.loadFile(page); } catch (error) { dispose(); throw error; }
   return { win, dispose, open() {
-    if (!show || disposed || locked || suspended || store.read().name !== null) return false;
-    if (win.webContents.isCrashed()) win.reload();
-    win.show(); win.focus();
+    const state = store.read();
+    if (!show || disposed || locked || suspended || !state.ready || state.name !== null) return false;
+    if (expandedScene(state)) expand();
+    active = true;
+    if (state.completed === 'contact') {
+      win.setFocusable(true);
+      win.setIgnoreMouseEvents(false);
+      win.show(); win.focus();
+    } else win.showInactive();
+    changed();
     return true;
   } };
 }

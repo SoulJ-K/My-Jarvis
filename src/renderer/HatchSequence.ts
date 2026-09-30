@@ -1,5 +1,5 @@
-/** Explicitly paced scenes. The host supplies validated IPC and availability;
- * no renderer timer or product readiness trigger advances saved progress. */
+/** The host supplies validated IPC and availability. Automatic pacing only asks
+ * the host to save a scene after it has been visible; the host owns progress. */
 namespace JarvisHatch {
   type Snapshot = import('../pet/lifecycle').Lifecycle;
   type Scene = import('../pet/lifecycle').HatchScene;
@@ -22,8 +22,10 @@ namespace JarvisHatch {
     private hostAvailable = false;
     private namePrompt?: NamePrompt;
     private nameDraft = '';
+    private sceneTimer?: ReturnType<typeof setTimeout>;
     private readonly onVisibility = () => { void this.refresh(this.hostAvailable && !document.hidden).catch(() => this.showReadError()); };
-    constructor(private readonly root: HTMLElement, private readonly transport: Transport) {
+    constructor(private readonly root: HTMLElement, private readonly transport: Transport,
+      private readonly auto = false) {
       root.classList.add('hatch-sequence');
       document.addEventListener('visibilitychange', this.onVisibility);
     }
@@ -37,6 +39,7 @@ namespace JarvisHatch {
       if (this.disposed) return;
       const generation = ++this.generation;
       this.active = available;
+      clearTimeout(this.sceneTimer); this.sceneTimer = undefined;
       if (this.namePrompt) this.nameDraft = this.namePrompt.value;
       this.namePrompt?.dispose(); this.namePrompt = undefined; this.root.replaceChildren();
       if (!available) return;
@@ -60,8 +63,8 @@ namespace JarvisHatch {
       this.root.dataset.orbId = state.orbId ?? '';
       const scene = document.createElement('div'); scene.className = 'hatch-art';
       scene.setAttribute('aria-hidden', 'true');
-      // Temporary geometric art; final character/appearance generation is out of scope.
-      for (const part of ['egg', 'crack', 'orb', 'baby']) {
+      // CSS art follows the chosen starry shell and the current baby silhouette.
+      for (const part of ['egg', 'crack', 'orb', 'shell-left', 'shell-right', 'baby']) {
         const element = document.createElement('span'); element.className = `hatch-${part}`; scene.append(element);
       }
       const caption = document.createElement('p'); caption.setAttribute('role', 'status');
@@ -80,22 +83,32 @@ namespace JarvisHatch {
         this.root.append(this.namePrompt.element); this.namePrompt.focus(); return;
       }
       const button = document.createElement('button'); button.type = 'button';
-      button.textContent = step === 'contact' ? '안녕' : step === 'prelude' ? '함께 보기' : '계속 보기';
+      button.textContent = this.auto ? '다시 시도' : step === 'contact' ? '안녕' : step === 'prelude' ? '함께 보기' : '계속 보기';
       const error = document.createElement('p'); error.setAttribute('role', 'alert');
       const generation = this.generation;
-      button.addEventListener('click', async () => {
+      const advance = async () => {
         if (!this.active || this.busy || this.disposed || generation !== this.generation) return;
         this.busy = true; button.disabled = true; error.textContent = '';
         try {
           const saved = await this.transport.apply(state.revision, { type: 'witness', scene: step });
           if (this.active && !this.disposed && generation === this.generation) { this.state = saved; this.render(); }
-        } catch { if (this.active && generation === this.generation) error.textContent = '진행을 저장하지 못했어요. 다시 시도해 주세요.'; }
+        } catch {
+          if (this.active && generation === this.generation) {
+            error.textContent = '진행을 저장하지 못했어요. 다시 시도해 주세요.';
+            button.hidden = false;
+          }
+        }
         finally { this.busy = false; button.disabled = false; }
-      });
-      this.root.append(button, error); button.focus();
+      };
+      button.addEventListener('click', advance);
+      button.hidden = this.auto;
+      this.root.append(button, error);
+      if (this.auto) this.sceneTimer = setTimeout(advance, 1100);
+      else button.focus();
     }
     dispose(): void {
       this.disposed = true; this.active = false; this.generation++;
+      clearTimeout(this.sceneTimer);
       document.removeEventListener('visibilitychange', this.onVisibility);
       this.namePrompt?.dispose(); this.root.replaceChildren();
     }

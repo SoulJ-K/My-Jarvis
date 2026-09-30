@@ -1,7 +1,7 @@
 import { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, dialog, Menu, nativeImage, powerMonitor, Tray, type BrowserWindow } from 'electron';
 import { openEggLife } from '../storage/egg-life-repository';
-import { createPetWindow, initialPosition, recordPetDiagnostic } from './windows';
+import { createPetWindow, initialPosition, placeBabyAfterHatch, recordPetDiagnostic } from './windows';
 import { TimerRepository } from '../storage/timer-repository';
 import { TimerService } from '../assistant/timer';
 import { ReminderService, type NotifySchedule } from '../assistant/reminders';
@@ -38,7 +38,7 @@ export function startJarvis(options: {
   let hatchHasStarted = () => false;
   const openHatch = () => {
     if (!show || quitting) return;
-    void syncHatch().then(() => { if (hatch?.open()) win?.hide(); })
+    void syncHatch().then(() => { hatch?.open(); })
       .catch(() => console.error('첫 만남 창 오류: HATCH_WINDOW_FAILED'));
   };
   const showPet = () => {
@@ -126,10 +126,11 @@ export function startJarvis(options: {
     syncHatch = () => {
       if (quitting || !hatching || hatch) return Promise.resolve();
       if (creatingHatch) return creatingHatch;
-      creatingHatch = createHatchWindow(lifecycle, show, saved => {
+      creatingHatch = createHatchWindow(lifecycle, win!, show, (saved, babyPosition) => {
         state = saved;
         currentStage = saved.stage;
         hatching = false;
+        placeBabyAfterHatch(win!, babyPosition);
         // The idle pet must load its committed baby snapshot before becoming visible.
         win!.setTitle('Jarvis Pet · 아기');
         win!.webContents.once('did-finish-load', showPet);
