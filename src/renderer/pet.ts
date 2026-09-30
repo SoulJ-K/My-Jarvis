@@ -1,4 +1,5 @@
 const egg = document.querySelector<HTMLButtonElement>('#egg')!;
+let babyName = '아기';
 // Identity comes from the app-owned store, never generated or persisted by the page.
 window.petWindow.snapshot().then(pet => {
   egg.dataset.petId = pet.petId;
@@ -7,7 +8,8 @@ window.petWindow.snapshot().then(pet => {
     document.documentElement.dataset.stage = 'baby';
     egg.classList.add('baby-idle');
     egg.title = '클릭: 입력창 · 드래그: 이동';
-    egg.setAttribute('aria-label', `${pet.name ?? '아기'}, 클릭하면 입력창을 열고, 드래그하면 이동합니다.`);
+    babyName = pet.name ?? '아기';
+    updateBabyLabel();
     document.querySelector('#pet-name')!.textContent = pet.name ?? '';
     document.querySelector('main')!.setAttribute('aria-label', 'Jarvis Pet 아기');
   }
@@ -95,7 +97,7 @@ const unsubscribeReady = window.petWindow.onStrokeReady(() => {
 window.addEventListener('unload', unsubscribeReady, { once: true });
 
 const food = document.querySelector<HTMLButtonElement>('#food')!;
-const caption = document.querySelector<HTMLParagraphElement>('#life-caption')!;
+const sleepSymbol = document.querySelector<HTMLElement>('#sleep-symbol')!;
 let babyRevision = -1;
 let babyState: import('../pet/baby-life').BabyPresentation | null = null;
 let foodPointer: number | undefined;
@@ -112,6 +114,20 @@ function moveBaby(position: { x: number; y: number }) {
   const shadow = document.querySelector<HTMLElement>('.shadow')!;
   shadow.style.setProperty('--baby-x', `${position.x - 36}px`);
   shadow.style.setProperty('--baby-y', `${position.y - 152}px`);
+}
+function updateBabyLabel() {
+  const state = babyState;
+  const activity = !state ? '' : state.behavior === 'sleeping' ? '자고 있습니다' :
+    state.behavior === 'drowsy' ? '졸려 꾸벅이고 있습니다' :
+    state.behavior === 'approaching' ? '먹이로 다가가고 있습니다' :
+    state.behavior === 'eating' ? '먹이를 먹고 있습니다' :
+    state.social.motion === 'away' ? '잠시 거리를 두고 있습니다' :
+    state.reunion ? '반가워하는 모습입니다' :
+    state.social.motion === 'bounce' ? '기쁜 모습입니다' :
+    state.social.motion === 'tilt' ? '궁금해하는 모습입니다' :
+    state.social.motion === 'chase' ? '커서를 따라 놀고 있습니다' :
+    state.social.motion === 'play-orb' ? '구슬을 가지고 놀고 있습니다' : '쉬고 있습니다';
+  egg.setAttribute('aria-label', `${babyName}${activity ? `, ${activity}` : ''}. 클릭하면 입력창을 열고, 드래그하면 이동합니다.`);
 }
 function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   if (!state || state.revision < babyRevision) return;
@@ -154,9 +170,8 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   const chewProgress = state.meal ? Math.max(0, Math.min(1,
     (state.meal.progressMs - state.meal.approachMs) / state.meal.chewMs)) : 0;
   food.style.setProperty('--food-bite', String(1 - chewProgress * .9));
-  const text = { resting: '', drowsy: '졸려…', sleeping: '새근새근', approaching: '다가가는 중', eating: '냠냠' }[state.behavior];
-  caption.textContent = state.social.motion === 'away' ? state.social.caption :
-    reunion ? (state.behavior === 'drowsy' ? '왔어…?' : '왔어!') : text || state.social.caption;
+  sleepSymbol.hidden = state.behavior !== 'sleeping';
+  updateBabyLabel();
   egg.dataset.social = state.social.motion;
   const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
   orb.hidden = !state.social.orb;

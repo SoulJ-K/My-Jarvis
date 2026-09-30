@@ -64,20 +64,21 @@ html[data-stage=baby] main { width: 420px; height: 300px; }
 #food:active { cursor: grabbing; }
 #food:focus-visible { outline: 2px solid #527c71; border-radius: 8px; }
 #food:disabled { cursor: default; pointer-events: none; }
-#egg.baby-idle[data-life=approaching], .shadow[data-approaching=true] { transition-duration: var(--approach-ms, 8000ms); }
 html[data-stage=baby] .shadow { left: 41px; top: 235px; transform: translate(var(--baby-x, 0px), var(--baby-y, 0px)); transition: transform 1.2s ease-in-out; }
+#egg.baby-idle[data-life=approaching], html[data-stage=baby] .shadow[data-approaching=true] { transition-duration: var(--approach-ms, 8000ms); }
 #egg[data-life=sleeping] .shell { transform: scale(1.06, .85); transform-origin: bottom; }
 #egg[data-life=sleeping] .shell::before { height: 3px; top: 36px; border-radius: 0; }
 #egg[data-life=drowsy] .shell { animation: baby-nod 3s ease-in-out infinite; }
 #egg[data-life=eating] .shell::after { animation: baby-chew .55s ease-in-out infinite alternate; }
-#life-caption { position: absolute; top: 4px; left: 12px; margin: 0; padding: 2px 5px; color: #283448; background: #f6f4ed; border-radius: 8px; font: 12px/1.5 system-ui, sans-serif; pointer-events: none; }
-#life-caption:empty { display: none; }
+#sleep-symbol { position: absolute; left: 93px; top: 13px; color: #527c71; font: 700 14px/1 system-ui, sans-serif; pointer-events: none; user-select: none; animation: sleep-glow 2.6s ease-in-out infinite alternate; }
+#sleep-symbol[hidden] { display: none; }
 #save-status { bottom: 24px; z-index: 3; pointer-events: none; }
 @keyframes baby-nod { 50% { transform: scaleY(.95) rotate(2deg); } }
+@keyframes sleep-glow { to { opacity: .55; } }
 @keyframes baby-chew { to { height: 13px; border-radius: 50% 50% 55% 55%; } }
 @media (prefers-reduced-motion: reduce) {
   #egg.baby-idle, html[data-stage=baby] .shadow, #food span { transition: none; }
-  #egg[data-life] .shell, #egg[data-life=eating] .shell::after { animation: none; }
+  #sleep-symbol, #egg[data-life] .shell, #egg[data-life=eating] .shell::after { animation: none; }
   #egg[data-life=eating] .shell::after { height: 9px; }
 }
 
