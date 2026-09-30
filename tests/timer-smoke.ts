@@ -33,6 +33,8 @@ app.whenReady().then(async () => {
   const schedules = new ReminderService(new ScheduleRepository(directory), () => now, undefined, () => panels?.refresh());
   panels = await createPromptWindows(service, true, schedules);
   ipcMain.handle = register;
+  // Keep the automated background window clock active; deadline drift is tested separately.
+  panels.prompt.webContents.setBackgroundThrottling(false);
   const run = (code: string) => panels.prompt.webContents.executeJavaScript(code);
   assert.equal(panels.prompt.isVisible(),false);
   assert.equal(panels.notice.isFocusable(),false);
