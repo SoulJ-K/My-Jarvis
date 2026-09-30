@@ -49,6 +49,25 @@ app.whenReady().then(async () => {
   await input('내일 3시 알람'); await settle();
   assert.match(await run('document.querySelector("#result").textContent'),/오전·오후/);
   assert.equal(schedules.views().length,0);
+  assert.equal(await run('document.querySelector("#request").value'), '내일 3시 알람');
+  assert.equal(await run('document.querySelectorAll("#schedule-choices button").length'), 2);
+  await run('document.querySelectorAll("#schedule-choices button")[1].click()'); await settle();
+  assert.equal(schedules.views().length, 0, 'choosing PM only previews and cannot store');
+  assert.equal(await run('document.querySelector("#schedule-clarification").hidden'), true);
+  assert.match(await run('document.querySelector("#schedule-summary").textContent'), /2026-09-27 15:00/);
+  await run('document.querySelector("#schedule-confirm").click()'); await settle();
+  assert.equal(schedules.views().length, 1);
+  await run('document.querySelector("#schedules button").click()'); await settle();
+  assert.equal(schedules.views().length, 0);
+  now = new Date(2026,8,26,14).getTime();
+  for (const request of ['오늘 여섯시 반에 퇴실체크 알람해줘', '오늘 18:30분에 퇴실체크 알람해줘']) {
+    await input(request); await settle();
+    assert.match(await run('document.querySelector("#schedule-summary").textContent'), /2026-09-26 18:30/);
+    assert.match(await run('document.querySelector("#schedule-summary").textContent'), /퇴실체크/);
+    assert.equal(schedules.views().length, 0);
+  }
+  now = new Date(2026,8,26,9).getTime();
+  await run('document.querySelector("#request").dispatchEvent(new Event("input"))');
   await run(`(() => { const el=document.querySelector('#request'); el.value='오늘 10:00 알람'; el.dispatchEvent(new CompositionEvent('compositionstart')); document.querySelector('#timer-form').requestSubmit(); })()`);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
   await run(`document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('#timer-form').requestSubmit()`);
