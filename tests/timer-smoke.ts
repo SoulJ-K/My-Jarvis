@@ -12,6 +12,11 @@ import { timerNotifications } from '../src/main/notifications';
 const directory = mkdtempSync(path.join(tmpdir(),'jarvis-timer-smoke-'));
 app.setPath('userData',directory);
 app.on('window-all-closed', () => {});
+app.on('quit', () => {
+  // Chromium can still write cache files while Electron quits.
+  try { rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); }
+  catch { console.warn('WARN: temporary test directory cleanup incomplete; retained for later cleanup.'); }
+});
 const timeout = setTimeout(() => app.exit(2),25000);
 app.whenReady().then(async () => {
   app.dock?.hide();
@@ -28,6 +33,8 @@ app.whenReady().then(async () => {
   const schedules = new ReminderService(new ScheduleRepository(directory), () => now, undefined, () => panels?.refresh());
   panels = await createPromptWindows(service, true, schedules);
   ipcMain.handle = register;
+  // Keep the automated background window clock active; deadline drift is tested separately.
+  panels.prompt.webContents.setBackgroundThrottling(false);
   const run = (code: string) => panels.prompt.webContents.executeJavaScript(code);
   assert.equal(panels.prompt.isVisible(),false);
   assert.equal(panels.notice.isFocusable(),false);
@@ -83,7 +90,12 @@ app.whenReady().then(async () => {
   await run(`document.querySelector('#request').value='5분 타이머'; document.querySelector('form').requestSubmit()`);
   await run('new Promise(resolve => setTimeout(resolve,100))');
   assert.equal(service.views().length,1);
-  await new Promise(resolve => setTimeout(resolve,8200));
+  assert.match(await run('document.querySelector("#result").textContent'), /8초 뒤/);
+  await new Promise(resolve => setTimeout(resolve,1100));
+  assert.match(await run('document.querySelector("#result").textContent'), /7초 뒤/);
+  panels.prompt.blur(); panels.open();
+  assert.match(await run('document.querySelector("#result").textContent'), /7초 뒤/, 'refocusing keeps the same deadline');
+  await new Promise(resolve => setTimeout(resolve,7100));
   assert.equal(panels.prompt.isVisible(),false);
   panels.open();
   await run('new Promise(resolve => setTimeout(resolve,100))');
@@ -106,5 +118,5 @@ app.whenReady().then(async () => {
     notifications.dispose();
   }
   typing.destroy(); panels.dispose(); service.dispose(); schedules.dispose();
-  clearTimeout(timeout); rmSync(directory,{recursive:true,force:true}); app.quit();
+  clearTimeout(timeout); app.quit();
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });

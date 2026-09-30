@@ -12,7 +12,7 @@ import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
 
 test('temporary smoke cleanup reports busy-directory failures without uncaught dialogs', () => {
-  for (const filename of ['baby-social-smoke.js', 'baby-smoke.js', 'egg-smoke.js']) {
+  for (const filename of ['baby-social-smoke.js', 'baby-smoke.js', 'egg-smoke.js', 'timer-smoke.js']) {
     let quit: (() => void) | undefined;
     let removalFails = true;
     const warnings: string[] = [];
