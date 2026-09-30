@@ -4,15 +4,41 @@
   const result = document.querySelector<HTMLElement>('#result')!;
   const list = document.querySelector<HTMLElement>('#timers')!;
   const submit = document.querySelector<HTMLButtonElement>('#submit')!;
+  const scheduleList = document.querySelector<HTMLElement>('#schedules')!;
+  const confirmation = document.querySelector<HTMLElement>('#schedule-confirmation')!;
+  const confirmButton = document.querySelector<HTMLButtonElement>('#schedule-confirm')!;
+  const editButton = document.querySelector<HTMLButtonElement>('#schedule-edit')!;
+  const idleMessage = 'Enter로 보내고, Esc로 입력창을 닫을 수 있어요.';
   let composing = false;
   let compositionEnded = -Infinity;
   let submitPressedAt = -Infinity;
   let busy = false;
-  let scheduleBusy = false;
   let requestId = crypto.randomUUID();
+  let draftId: string | undefined;
+  let session = 0;
+  let refreshVersion = 0;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   const cancelAutoClose = () => { clearTimeout(closeTimer); closeTimer = undefined; };
   const message = (text: string, error = false) => { result.textContent = text; result.classList.toggle('error', error); };
+  const requestMessage = (text: string, error = false) => {
+    message(text, error); input.setAttribute('aria-invalid', String(error));
+  };
+  function setBusy(value: boolean) {
+    busy = value; input.disabled = value; submit.disabled = value;
+    confirmButton.disabled = value; editButton.disabled = value;
+    form.setAttribute('aria-busy', String(value));
+    submit.textContent = value ? '처리 중…' : '보내기';
+  }
+  function discardDraft() {
+    draftId = undefined; confirmation.hidden = true;
+    void window.schedulePanel.discard().catch(() => {});
+  }
+  function resetInput() {
+    session++; cancelAutoClose(); discardDraft();
+    input.value = ''; requestId = crypto.randomUUID(); composing = false;
+    compositionEnded = -Infinity; submitPressedAt = -Infinity;
+    setBusy(false); requestMessage(idleMessage);
+  }
   const systemLabels = {
     'not-requested': '시스템 알림 미요청', requested: '시스템 알림 요청됨 · 표시 확인 대기',
     shown: '시스템 표시 신호 수신 · 읽음 여부는 알 수 없음', failed: '시스템 알림 실패 · 이 앱 안내에서 확인하세요',
@@ -44,79 +70,12 @@
         item.append(title, detail, action); list.append(item);
         if (row.status === 'due' && !document.hidden) void window.timerPanel.displayed(row.id).catch(() => {});
       }
-    } catch { message('타이머 정보를 읽지 못했습니다. 등록 성공으로 처리하지 않았습니다.', true); }
+    } catch { list.textContent = '타이머 정보를 읽지 못했습니다. 창을 다시 열어 확인해 주세요.'; }
   }
-  input.addEventListener('compositionstart', () => { composing = true; cancelAutoClose(); });
-  input.addEventListener('compositionend', () => { composing = false; compositionEnded = performance.now(); });
-  submit.addEventListener('pointerdown', () => { submitPressedAt = performance.now(); });
-  input.addEventListener('input', () => { cancelAutoClose(); requestId = crypto.randomUUID(); });
-  form.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229 || performance.now() - compositionEnded < 100)) event.preventDefault();
-  });
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const pointerSubmit = event.submitter === submit && performance.now() - submitPressedAt < 1000;
-    submitPressedAt = -Infinity;
-    if (busy || composing || (!pointerSubmit && performance.now() - compositionEnded < 100)) return;
-    cancelAutoClose(); busy = true; submit.disabled = true; input.disabled = true;
-    try {
-      const reply = await window.timerPanel.submit(requestId, input.value);
-      message(reply.message, !reply.ok); await refresh();
-      if (reply.ok) {
-        input.value = ''; requestId = crypto.randomUUID();
-        message(`${reply.message} 8초 뒤 입력창이 닫힙니다.`);
-        closeTimer = setTimeout(() => { if (!composing && !busy && !scheduleBusy && input.value === '' && scheduleInput.value === '') void close(); }, 8000);
-      }
-    } catch { message('저장 여부를 확인하지 못했습니다. 같은 입력으로 다시 확인할 수 있습니다.', true); }
-    finally { busy = false; submit.disabled = false; input.disabled = false; }
-  });
-  async function close() {
-    if (busy || scheduleBusy) return; // A committed request is cancelled through its explicit timer button.
-    cancelAutoClose(); input.value = ''; requestId = crypto.randomUUID();
-    resetSchedule();
-    await window.timerPanel.close();
-  }
-  document.querySelector<HTMLButtonElement>('#close')!.onclick = () => { void close(); };
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !composing && !scheduleComposing && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); void close(); }
-    else cancelAutoClose();
-  });
-  document.addEventListener('pointerdown', cancelAutoClose);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
-  window.timerPanel.onClose(() => { resetSchedule(); cancelAutoClose(); input.value = ''; requestId = crypto.randomUUID(); composing = false; });
-  window.timerPanel.onOpen(() => { cancelAutoClose(); message('“5분 타이머” 또는 아기에게 “안녕”, “잘했어”, “구슬 놀이”, “그만”을 입력하세요.'); input.focus(); void refresh(); });
-  window.timerPanel.subscribe(() => { void refresh(); });
-  const scheduleInput = document.querySelector<HTMLInputElement>('#schedule-request')!;
-  const scheduleForm = document.querySelector<HTMLFormElement>('#schedule-form')!;
-  const scheduleResult = document.querySelector<HTMLElement>('#schedule-result')!;
-  const scheduleList = document.querySelector<HTMLElement>('#schedules')!;
-  const confirmation = document.querySelector<HTMLElement>('#schedule-confirmation')!;
-  const previewButton = document.querySelector<HTMLButtonElement>('#schedule-preview')!;
-  const confirmButton = document.querySelector<HTMLButtonElement>('#schedule-confirm')!;
-  const editButton = document.querySelector<HTMLButtonElement>('#schedule-edit')!;
-  let scheduleId = crypto.randomUUID();
-  let draftId: string | undefined;
-  let scheduleComposing = false;
-  let scheduleCompositionEnd = -Infinity;
-  let schedulePressedAt = -Infinity;
-  let refreshVersion = 0;
-  const scheduleMessage = (text: string, error = false) => {
-    scheduleResult.textContent = text; scheduleResult.classList.toggle('error', error);
-    scheduleInput.setAttribute('aria-invalid', String(error));
-  };
   const scheduleTime = (row: { localDateTime: string; timeZone: string; utcOffsetMinutes: number }) => {
     const offset = row.utcOffsetMinutes;
     return `${row.localDateTime} · ${row.timeZone} (UTC${offset < 0 ? '−' : '+'}${String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')}:${String(Math.abs(offset) % 60).padStart(2, '0')})`;
   };
-  function resetSchedule() {
-    scheduleInput.value = ''; scheduleId = crypto.randomUUID(); draftId = undefined;
-    confirmation.hidden = true; scheduleComposing = false;
-    scheduleMessage(''); void window.schedulePanel.discard().catch(() => {});
-  }
-  function setScheduleBusy(value: boolean) {
-    scheduleBusy = value; scheduleInput.disabled = value;
-    previewButton.disabled = value; confirmButton.disabled = value; editButton.disabled = value;
-  }
   async function refreshSchedules() {
     const version = ++refreshVersion;
     try {
@@ -139,60 +98,100 @@
         action.onclick = async () => {
           cancelAutoClose(); action.disabled = true;
           try {
-            if (row.status === 'pending') { const reply = await window.schedulePanel.cancel(row.id); scheduleMessage(reply.message, !reply.ok); }
-            else { await window.schedulePanel.acknowledge(row.id); scheduleMessage('확인한 알림을 목록에서 정리했습니다.'); }
+            if (row.status === 'pending') { const reply = await window.schedulePanel.cancel(row.id); message(reply.message, !reply.ok); }
+            else { await window.schedulePanel.acknowledge(row.id); message('확인한 알림을 목록에서 정리했습니다.'); }
             await refreshSchedules();
-          } catch { scheduleMessage('변경을 저장하지 못했습니다. 다시 확인해 주세요.', true); action.disabled = false; }
+          } catch { message('변경을 저장하지 못했습니다. 다시 확인해 주세요.', true); action.disabled = false; }
         };
         item.append(title, content, detail, delivery, action); scheduleList.append(item);
         if (row.status === 'due' && !document.hidden) void window.schedulePanel.displayed(row.id).catch(() => {});
       }
-    } catch { scheduleMessage('알람 저장소를 읽지 못했습니다. 등록 성공으로 처리하지 않았습니다.', true); }
+    } catch { if (version === refreshVersion) scheduleList.textContent = '알림 목록을 읽지 못했습니다. 창을 다시 열어 확인해 주세요.'; }
   }
-  scheduleInput.addEventListener('compositionstart', () => { scheduleComposing = true; cancelAutoClose(); });
-  scheduleInput.addEventListener('compositionend', () => { scheduleComposing = false; scheduleCompositionEnd = performance.now(); });
-  previewButton.addEventListener('pointerdown', () => { schedulePressedAt = performance.now(); });
-  scheduleInput.addEventListener('input', () => {
-    cancelAutoClose(); scheduleId = crypto.randomUUID(); draftId = undefined; confirmation.hidden = true;
-    scheduleMessage(''); void window.schedulePanel.discard().catch(() => {});
+  input.addEventListener('compositionstart', () => { composing = true; cancelAutoClose(); });
+  input.addEventListener('compositionend', () => { composing = false; compositionEnded = performance.now(); });
+  submit.addEventListener('pointerdown', () => { submitPressedAt = performance.now(); });
+  input.addEventListener('input', () => {
+    cancelAutoClose(); requestId = crypto.randomUUID(); discardDraft(); requestMessage('');
   });
-  scheduleForm.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (scheduleComposing || event.isComposing || event.keyCode === 229 || performance.now() - scheduleCompositionEnd < 100)) event.preventDefault();
+  form.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229 || performance.now() - compositionEnded < 100)) event.preventDefault();
   });
-  scheduleForm.addEventListener('submit', async event => {
+  form.addEventListener('submit', async event => {
     event.preventDefault();
-    const pointerSubmit = event.submitter === previewButton && performance.now() - schedulePressedAt < 1000;
-    schedulePressedAt = -Infinity;
-    if (scheduleBusy || scheduleComposing || (!pointerSubmit && performance.now() - scheduleCompositionEnd < 100)) return;
-    cancelAutoClose(); setScheduleBusy(true); confirmation.hidden = true; draftId = undefined;
+    const pointerSubmit = event.submitter === submit && performance.now() - submitPressedAt < 1000;
+    submitPressedAt = -Infinity;
+    if (busy || composing || (!pointerSubmit && performance.now() - compositionEnded < 100)) return;
+    cancelAutoClose();
+    const text = input.value.trim();
+    if (!text) { requestMessage('부탁할 내용을 적어 주세요.', true); input.focus(); return; }
+    // Route calendar-looking requests to the existing preview; interpretation remains in the service.
+    const calendar = /알람|알림|리마인더|오늘|내일|오전|오후|\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(text);
+    if (!calendar && !/^5\s*분\s*타이머$/.test(text) && !['안녕', '잘했어', '구슬 놀이', '그만'].includes(text)) {
+      discardDraft(); requestMessage('아직 이해하지 못했어요. 아래 입력 예시를 확인해 주세요. 실행하거나 저장한 내용은 없습니다.', true); input.focus(); return;
+    }
+    setBusy(true); discardDraft(); requestMessage(calendar ? '날짜와 시간을 확인하고 있어요…' : '요청을 처리하고 있어요…');
+    const activeSession = session;
     try {
-      const reply = await window.schedulePanel.preview(scheduleId, scheduleInput.value);
-      scheduleMessage(reply.message, !reply.ok);
-      if (reply.ok) {
-        draftId = reply.draft.id;
-        document.querySelector('#schedule-summary')!.textContent = `${reply.draft.kind === 'alarm' ? '알람' : '리마인더'}\n${scheduleTime(reply.draft)}\n${reply.draft.content}`;
-        confirmation.hidden = false;
+      if (calendar) {
+        const reply = await window.schedulePanel.preview(requestId, text);
+        if (session !== activeSession) return;
+        requestMessage(reply.message, !reply.ok);
+        if (reply.ok) {
+          draftId = reply.draft.id;
+          document.querySelector('#schedule-summary')!.textContent = `${reply.draft.kind === 'alarm' ? '알람' : '리마인더'}\n${scheduleTime(reply.draft)}\n${reply.draft.content}`;
+          confirmation.hidden = false;
+        }
+      } else {
+        const reply = await window.timerPanel.submit(requestId, text);
+        if (session !== activeSession) return;
+        requestMessage(reply.message, !reply.ok); void refresh();
+        if (reply.ok) {
+          input.value = ''; requestId = crypto.randomUUID();
+          requestMessage(`${reply.message} 8초 뒤 입력창이 닫힙니다.`);
+          closeTimer = setTimeout(() => { if (!composing && !busy && !draftId && input.value === '') void close(); }, 8000);
+        }
       }
-    } catch { scheduleMessage('내용을 확인하지 못했습니다. 다시 시도해 주세요.', true); }
-    finally { setScheduleBusy(false); if (draftId) confirmButton.focus(); else scheduleInput.focus(); }
+    } catch {
+      if (session === activeSession) requestMessage(calendar ? '내용을 확인하지 못했습니다. 입력은 그대로 두었으니 다시 보내 주세요.' : '저장 여부를 확인하지 못했습니다. 같은 입력으로 다시 확인할 수 있습니다.', true);
+    } finally {
+      if (session === activeSession) { setBusy(false); if (draftId) confirmButton.focus(); else input.focus(); }
+    }
   });
   confirmButton.onclick = async () => {
-    if (scheduleBusy || !draftId) return;
-    cancelAutoClose(); setScheduleBusy(true);
+    if (busy || !draftId) return;
+    cancelAutoClose(); setBusy(true);
+    const activeSession = session;
     try {
       const reply = await window.schedulePanel.confirm(draftId);
-      scheduleMessage(reply.message, !reply.ok);
-      if (reply.ok) { scheduleInput.value = ''; scheduleId = crypto.randomUUID(); draftId = undefined; confirmation.hidden = true; }
-      await refreshSchedules();
-    } catch { scheduleMessage('저장 여부를 확인하지 못했습니다. 같은 확인 버튼으로 다시 확인할 수 있습니다.', true); }
-    finally { setScheduleBusy(false); if (!draftId) scheduleInput.focus(); }
+      if (session !== activeSession) return;
+      requestMessage(reply.message, !reply.ok);
+      if (reply.ok) { input.value = ''; requestId = crypto.randomUUID(); draftId = undefined; confirmation.hidden = true; }
+      void refreshSchedules();
+    } catch {
+      if (session === activeSession) requestMessage('저장 여부를 확인하지 못했습니다. 같은 확인 버튼으로 다시 확인할 수 있습니다.', true);
+    } finally {
+      if (session === activeSession) { setBusy(false); if (!draftId) input.focus(); else confirmButton.focus(); }
+    }
   };
   editButton.onclick = () => {
-    confirmation.hidden = true; draftId = undefined; scheduleId = crypto.randomUUID();
-    void window.schedulePanel.discard().catch(() => {}); scheduleInput.focus();
+    if (busy) return;
+    discardDraft(); requestId = crypto.randomUUID(); requestMessage('내용을 수정한 뒤 다시 보내 주세요. 아직 저장하지 않았습니다.'); input.focus();
   };
+  async function close() {
+    if (busy) return;
+    cancelAutoClose(); await window.timerPanel.close();
+  }
+  document.querySelector<HTMLButtonElement>('#close')!.onclick = () => { void close(); };
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !composing && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); void close(); }
+    else cancelAutoClose();
+  });
+  document.addEventListener('pointerdown', cancelAutoClose);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh(); void refreshSchedules(); } });
+  window.timerPanel.onClose(resetInput);
+  window.timerPanel.onOpen(() => { cancelAutoClose(); if (!busy && !draftId) { requestMessage(idleMessage); input.focus(); } void refresh(); void refreshSchedules(); });
+  window.timerPanel.subscribe(() => { void refresh(); });
   window.schedulePanel.subscribe(() => { void refreshSchedules(); });
-  window.timerPanel.onOpen(() => { void refreshSchedules(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshSchedules(); });
   void refresh(); void refreshSchedules();
 })();

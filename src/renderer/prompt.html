@@ -3,19 +3,19 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'">
 <title>Jarvis Pet · 앱 안내</title><link rel="stylesheet" href="prompt.css"></head>
 <body><main>
-<header><p class="eyebrow">JARVIS PET · 앱 안내</p><h1>작은 시간 약속</h1><p>펫과 짧게 이야기하고, 시간 약속을 남겨요.</p></header>
-<form id="timer-form"><label for="request">요청</label><input id="request" maxlength="80" autocomplete="off" placeholder="5분 타이머" aria-describedby="hint result">
-<p id="hint">5분 타이머 하나를 사용할 수 있습니다. 아기에게는 “안녕”, “잘했어”, “구슬 놀이”, “그만”도 말할 수 있어요. 앞뒤 공백을 뺀 정확한 문장만 알아들어요. 날짜 알림은 아래에서 등록하세요.</p>
+<header><p class="eyebrow">JARVIS PET · 앱 안내</p><h1>펫에게 부탁하기</h1><p>짧은 이야기와 시간 약속을 한 곳에서.</p></header>
+<form id="timer-form"><label for="request">무엇을 도와드릴까요?</label><input id="request" maxlength="200" autocomplete="off" placeholder="예: 내일 오전 7시 알람" aria-describedby="hint result">
+<p id="hint">타이머, 알람, 리마인더를 여기에 적어 주세요. 알람·리마인더는 내용을 확인한 뒤 저장합니다.</p>
 <div class="actions"><button id="submit" type="submit">보내기</button><button id="close" type="button" class="secondary">닫기 / 취소</button></div></form>
-<p id="result" role="status" aria-live="polite">입력한 뒤 Enter로 등록하세요. Esc는 입력을 취소합니다.</p>
+<p id="result" role="status" aria-live="polite">Enter로 보내고, Esc로 입력창을 닫을 수 있어요.</p>
+<section id="schedule-confirmation" class="timer" aria-labelledby="confirmation-title" hidden><h2 id="confirmation-title">이 내용으로 등록할까요?</h2><p id="schedule-summary"></p><p class="detail">표시한 시간대의 시각으로 저장합니다. 기기 시간대가 바뀌어도 같은 순간에 알립니다.</p><div class="actions"><button id="schedule-confirm" type="button">이 내용으로 등록</button><button id="schedule-edit" type="button" class="secondary">수정하기</button></div></section>
+<details class="examples"><summary>지금 사용할 수 있는 입력 예시</summary><ul>
+<li><strong>타이머</strong> · 5분 타이머</li>
+<li><strong>알람</strong> · 내일 오전 7시 알람</li>
+<li><strong>리마인더</strong> · 내일 15:00 리마인더 서류 확인</li>
+<li><strong>아기와 이야기</strong> · 안녕 / 잘했어 / 구슬 놀이 / 그만</li>
+</ul><p class="detail">현재는 위 형식으로 요청할 수 있어요. 날짜는 오늘·내일 또는 YYYY-MM-DD로 적고, 알림은 한 번만 울립니다. 5분 타이머는 한 번에 하나만 사용할 수 있어요.</p></details>
 <section aria-labelledby="list-title"><h2 id="list-title">타이머</h2><div id="timers"></div></section>
-<section aria-labelledby="schedule-title"><h2 id="schedule-title">알람 · 리마인더</h2>
-<form id="schedule-form"><label for="schedule-request">날짜·시각·알림 내용</label>
-<input id="schedule-request" maxlength="200" autocomplete="off" placeholder="내일 오전 7시 알람" aria-describedby="schedule-hint schedule-result">
-<p id="schedule-hint" class="detail">예: 내일 15:00 리마인더 서류 확인<br>오늘·내일 또는 YYYY-MM-DD를 적어 주세요. 한 번만 울립니다.</p>
-<button id="schedule-preview" type="submit">내용 확인</button></form>
-<p id="schedule-result" role="status" aria-live="polite"></p>
-<div id="schedule-confirmation" class="timer" hidden><strong>이 내용으로 등록할까요?</strong><p id="schedule-summary"></p><p class="detail">표시한 시간대의 시각으로 저장합니다. 기기 시간대가 바뀌어도 같은 순간에 알립니다.</p><div class="actions"><button id="schedule-confirm" type="button">이 내용으로 등록</button><button id="schedule-edit" type="button" class="secondary">다시 입력</button></div></div>
-<h2 id="schedule-list-title">예약 · 지난 미확인 알림</h2><div id="schedules" aria-labelledby="schedule-list-title"></div></section>
+<section aria-labelledby="schedule-list-title"><h2 id="schedule-list-title">예약 · 지난 미확인 알림</h2><div id="schedules"></div></section>
 <footer>앱을 완전히 종료하거나 컴퓨터가 잠들면 정시 알림을 보장하지 않습니다. 다시 열면 지난 타이머와 알림을 여기에서 확인할 수 있습니다.</footer>
 </main><script src="prompt.js"></script></body></html>
