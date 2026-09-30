@@ -88,7 +88,12 @@ app.whenReady().then(async () => {
   await run(`document.querySelector('#request').value='5분 타이머'; document.querySelector('form').requestSubmit()`);
   await run('new Promise(resolve => setTimeout(resolve,100))');
   assert.equal(service.views().length,1);
-  await new Promise(resolve => setTimeout(resolve,8200));
+  assert.match(await run('document.querySelector("#result").textContent'), /8초 뒤/);
+  await new Promise(resolve => setTimeout(resolve,1100));
+  assert.match(await run('document.querySelector("#result").textContent'), /7초 뒤/);
+  panels.prompt.blur(); panels.open();
+  assert.match(await run('document.querySelector("#result").textContent'), /7초 뒤/, 'refocusing keeps the same deadline');
+  await new Promise(resolve => setTimeout(resolve,7100));
   assert.equal(panels.prompt.isVisible(),false);
   panels.open();
   await run('new Promise(resolve => setTimeout(resolve,100))');
