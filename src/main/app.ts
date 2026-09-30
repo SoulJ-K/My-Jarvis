@@ -1,7 +1,7 @@
 import { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, dialog, Menu, nativeImage, powerMonitor, Tray, type BrowserWindow } from 'electron';
 import { openEggLife } from '../storage/egg-life-repository';
-import { createPetWindow, initialPosition } from './windows';
+import { createPetWindow, initialPosition, recordPetDiagnostic } from './windows';
 import { TimerRepository } from '../storage/timer-repository';
 import { TimerService } from '../assistant/timer';
 import { ReminderService, type NotifySchedule } from '../assistant/reminders';
@@ -54,12 +54,22 @@ export function startJarvis(options: {
     if (!win || win.isDestroyed()) return;
     const position = initialPosition();
     win.setPosition(position.x, position.y);
+    if (win.webContents.isCrashed()) {
+      recordPetDiagnostic('pet_renderer_manual_reload');
+      win.reload();
+    }
     showPet();
   };
   app.on('second-instance', reset);
   app.on('activate', showPet);
-  app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => { quitting = true; cleanupTimers?.(); cleanupTimers = undefined; hatch?.dispose(); tray?.destroy(); });
+  app.on('window-all-closed', () => {
+    if (!quitting) recordPetDiagnostic('all_windows_closed_unexpectedly');
+    app.quit();
+  });
+  app.on('before-quit', () => {
+    recordPetDiagnostic('app_quit_requested');
+    quitting = true; cleanupTimers?.(); cleanupTimers = undefined; hatch?.dispose(); tray?.destroy();
+  });
   app.whenReady().then(async () => {
     app.dock?.hide();
     // Persistence must succeed before an egg window can exist.
@@ -105,8 +115,11 @@ export function startJarvis(options: {
       life.care(kind);
       checkpoint();
     }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby,
-    () => { if (panels && !panels.prompt.isVisible()) panels.open(); });
-    win.on('closed', () => app.quit());
+    () => { if (panels && !panels.prompt.isVisible()) panels.open(); }, () => !quitting);
+    win.on('closed', () => {
+      if (!quitting) recordPetDiagnostic('pet_window_closed_unexpectedly');
+      app.quit();
+    });
     let creatingHatch: Promise<void> | undefined;
     syncHatch = () => {
       if (quitting || !hatching || hatch) return Promise.resolve();
@@ -186,6 +199,7 @@ export function startJarvis(options: {
       refreshTray();
       console.log('Jarvis Pet: 저장된 펫 실행 중. 메뉴 막대에서 종료할 수 있습니다.');
     }
+    recordPetDiagnostic('app_ready');
     await options.onReady?.(win);
   }).catch(error => {
     const code = error instanceof PetStorageError ? error.code : 'START_FAILED';

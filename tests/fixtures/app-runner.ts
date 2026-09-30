@@ -8,7 +8,7 @@ const startJarvis = lifecycle.startJarvis;
 
 // Only this test entry point accepts an alternate store. Production has no such switch.
 const [directory, mode] = process.argv.slice(2);
-if (!directory || !['once', 'hold', 'exercise', 'react-hold', 'care'].includes(mode)) throw new Error('Invalid test arguments');
+if (!directory || !['once', 'hold', 'exercise', 'react-hold', 'care', 'renderer-crash'].includes(mode)) throw new Error('Invalid test arguments');
 app.setPath('userData', directory);
 const timeout = setTimeout(() => app.exit(2), 20_000);
 
@@ -151,6 +151,34 @@ lifecycle.startJarvis = () => startJarvis({
   show: false,
   onReady: async win => {
     const initial = await inspect(win);
+    if (mode === 'renderer-crash') {
+      const windowId = win.id;
+      const windowCount = BrowserWindow.getAllWindows().length;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const loaded = new Promise<void>(resolve => win.webContents.once('did-finish-load', () => resolve()));
+        win.webContents.forcefullyCrashRenderer();
+        await loaded;
+        assert.equal(win.id, windowId);
+        assert.equal(BrowserWindow.getAllWindows().length, windowCount);
+        assert.deepEqual((await inspect(win)).snapshot, initial.snapshot);
+      }
+      const gone = new Promise<void>(resolve => win.webContents.once('render-process-gone', () => resolve()));
+      win.webContents.forcefullyCrashRenderer();
+      await gone;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      assert.equal(win.webContents.isCrashed(), true, 'third immediate crash must not auto-reload forever');
+      assert.equal(BrowserWindow.getAllWindows().length, windowCount);
+      const loaded = new Promise<void>(resolve => win.webContents.once('did-finish-load', () => resolve()));
+      app.emit('second-instance'); // Deliberate second launch requests the existing tray reset path.
+      await loaded;
+      assert.equal(win.id, windowId);
+      assert.equal(BrowserWindow.getAllWindows().length, windowCount);
+      assert.deepEqual((await inspect(win)).snapshot, initial.snapshot);
+      console.log(`TEST_READY:${JSON.stringify({ snapshot: initial.snapshot, windows: windowCount })}`);
+      clearTimeout(timeout);
+      app.quit();
+      return;
+    }
     let exercise: unknown;
     if (mode === 'exercise' || mode === 'react-hold') {
       const clicked = await clickEgg(win);

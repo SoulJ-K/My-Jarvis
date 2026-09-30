@@ -1,6 +1,7 @@
 import { babyDayPeriod, validFoodPoint } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
-import { BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { appendFileSync, lstatSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { EggSnapshot } from '../shared/pet';
@@ -10,6 +11,24 @@ import { BabyReturnBrain, EggBrain } from '../pet/brain';
 
 const WIDTH = 180;
 const HEIGHT = 200;
+const DIAGNOSTIC_LIMIT = 16 * 1024;
+
+// Fixed event codes only: never include a pet ID, text, coordinates or a data path.
+export function recordPetDiagnostic(event: string) {
+  try {
+    const file = path.join(app.getPath('userData'), 'pet-diagnostics.log');
+    const line = `${new Date().toISOString()} ${event}\n`;
+    try {
+      const existing = lstatSync(file);
+      if (!existing.isFile() || existing.isSymbolicLink()) return;
+      if (existing.size >= DIAGNOSTIC_LIMIT) writeFileSync(file, line, { mode: 0o600 });
+      else appendFileSync(file, line, { mode: 0o600 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') writeFileSync(file, line, { flag: 'wx', mode: 0o600 });
+      else throw error;
+    }
+  } catch { /* Diagnostics must never prevent pet startup or shutdown. */ }
+}
 
 function clampPosition(point: Electron.Point, area: Electron.Rectangle) {
   // Electron cursor, workArea and window positions all use logical pixels (DIP).
@@ -25,7 +44,8 @@ export function initialPosition() {
 }
 
 export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
-  currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository, onBabyClick: () => void = () => {}) {
+  currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository,
+  onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true) {
   const page = path.join(__dirname, '../renderer/index.html');
   const win = new BrowserWindow({
     ...initialPosition(), width: WIDTH, height: HEIGHT,
@@ -56,6 +76,10 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   let drag: EggGesture | undefined;
   let armTimer: ReturnType<typeof setTimeout> | undefined;
   let strokeSampler: ReturnType<typeof setInterval> | undefined;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let healthyTimer: ReturnType<typeof setTimeout> | undefined;
+  let recoveryAttempts = 0;
+  let recovering = false;
   const clearArm = () => {
     clearTimeout(armTimer); armTimer = undefined;
     clearInterval(strokeSampler); strokeSampler = undefined;
@@ -82,6 +106,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     const position = clampPosition(bounds, area);
     if (position.x !== bounds.x || position.y !== bounds.y) {
       win.setPosition(position.x, position.y, false);
+      recordPetDiagnostic('pet_window_repositioned');
     }
   };
   screen.on('display-removed', recoverPosition);
@@ -163,10 +188,16 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   };
   let socialSuspended = false;
   let socialLocked = false;
-  const suspendSocial = () => { socialSuspended = true; tickBaby(); };
-  const resumeSocial = () => { socialSuspended = false; };
-  const lockSocial = () => { socialLocked = true; tickBaby(); };
-  const unlockSocial = () => { socialLocked = false; };
+  const suspendSocial = () => { recordPetDiagnostic('system_suspended'); socialSuspended = true; tickBaby(); };
+  const resumeSocial = () => {
+    recordPetDiagnostic('system_resumed'); socialSuspended = false;
+    try { recoverPosition(); } catch { recordPetDiagnostic('pet_position_recovery_failed'); }
+  };
+  const lockSocial = () => { recordPetDiagnostic('screen_locked'); socialLocked = true; tickBaby(); };
+  const unlockSocial = () => {
+    recordPetDiagnostic('screen_unlocked'); socialLocked = false;
+    try { recoverPosition(); } catch { recordPetDiagnostic('pet_position_recovery_failed'); }
+  };
   powerMonitor.on('suspend', suspendSocial); powerMonitor.on('lock-screen', lockSocial);
   powerMonitor.on('resume', resumeSocial); powerMonitor.on('unlock-screen', unlockSocial);
   const tickBaby = () => {
@@ -185,7 +216,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
   };
   const babyTimer = setInterval(tickBaby, 1000);
-  win.on('hide', tickBaby);
+  win.on('hide', () => { recordPetDiagnostic('pet_window_hidden'); tickBaby(); });
+  win.on('show', () => recordPetDiagnostic('pet_window_shown'));
   ipcMain.handle('baby:read', (event, ...args: unknown[]) => {
     if (!validSender(event) || args.length !== 0) throw new Error('BABY_REQUEST_DENIED');
     if (!babyReady()) return null;
@@ -211,6 +243,9 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     return currentPet();
   });
   win.on('closed', () => {
+    recordPetDiagnostic('pet_window_closed');
+    clearTimeout(recoveryTimer);
+    clearTimeout(healthyTimer);
     clearInterval(babyTimer);
     powerMonitor.removeListener('suspend', suspendSocial); powerMonitor.removeListener('lock-screen', lockSocial);
     powerMonitor.removeListener('resume', resumeSocial); powerMonitor.removeListener('unlock-screen', unlockSocial);
@@ -233,8 +268,36 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   win.webContents.session.setPermissionCheckHandler(() => false);
   win.webContents.on('render-process-gone', (_event, details) => {
-    console.error('알 화면이 종료되었습니다:', details.reason);
-    win.close();
+    // The main process still owns the pet and its storage. Reuse this window so
+    // a renderer crash cannot trigger window-all-closed or create a second pet.
+    recordPetDiagnostic(`pet_renderer_gone_${details.reason}`);
+    console.error('펫 화면 프로세스 종료:', details.reason);
+    clearTimeout(healthyTimer);
+    if (!shouldRecover() || win.isDestroyed()) return;
+    if (recoveryAttempts >= 2) {
+      recordPetDiagnostic('pet_renderer_recovery_exhausted');
+      return;
+    }
+    recoveryAttempts++;
+    recovering = true;
+    clearTimeout(recoveryTimer);
+    recoveryTimer = setTimeout(() => {
+      if (win.isDestroyed() || !shouldRecover()) return;
+      recordPetDiagnostic('pet_renderer_reload_attempt');
+      try { win.reload(); }
+      catch { recordPetDiagnostic('pet_renderer_reload_failed'); }
+    }, recoveryAttempts * 300);
+  });
+  win.webContents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) recordPetDiagnostic('pet_renderer_load_failed');
+  });
+  win.webContents.on('did-finish-load', () => {
+    if (!recovering && recoveryAttempts < 2) return;
+    recovering = false;
+    recordPetDiagnostic('pet_renderer_recovered');
+    // Two immediate repeated crashes are bounded; a later independent crash can recover.
+    clearTimeout(healthyTimer);
+    healthyTimer = setTimeout(() => { recoveryAttempts = 0; }, 30_000);
   });
   await win.loadFile(page);
   if (show) win.showInactive();
