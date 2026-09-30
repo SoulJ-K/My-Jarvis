@@ -109,6 +109,7 @@ let activeMealId: string | undefined;
 let displayedBabyPosition = { x: 36, y: 152 };
 function moveBaby(position: { x: number; y: number }) {
   displayedBabyPosition = position;
+  egg.style.setProperty('--body-y', `${position.y}px`);
   egg.style.setProperty('--baby-x', `${position.x - 36}px`);
   egg.style.setProperty('--baby-y', `${position.y - 152}px`);
   const shadow = document.querySelector<HTMLElement>('.shadow')!;
