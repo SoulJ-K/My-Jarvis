@@ -6,6 +6,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
+import { LifecycleRepository } from '../src/storage/lifecycle-repository';
+import { BabyLifeRepository } from '../src/storage/baby-life-repository';
+import { hatchScenes } from '../src/pet/lifecycle';
 
 function workspace(t: test.TestContext) {
   const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-startup-'));
@@ -64,6 +67,44 @@ test('second app exits without opening an egg or changing its identity', async t
     assert.equal(second.stdout.includes('TEST_READY:'), false);
     assert.deepEqual(readFileSync(petDatabasePath(directory)), before);
   } finally { first.child.kill('SIGTERM'); await first.closed; }
+});
+
+test('a crashed pet renderer recovers in one window, stops a crash loop, and allows deliberate retry', async t => {
+  for (const stage of ['egg', 'baby'] as const) {
+    const directory = workspace(t);
+    if (stage === 'baby') {
+      const lifecycle = new LifecycleRepository(directory, {
+        namePolicy: { trim: true, maxCodePoints: 20 }, developmentTrigger: true,
+      });
+      let state = lifecycle.apply(0, { type: 'prepare' });
+      for (const scene of hatchScenes) state = lifecycle.apply(state.revision, { type: 'witness', scene });
+      lifecycle.apply(state.revision, { type: 'name', name: '별' });
+      lifecycle.close();
+      new BabyLifeRepository(directory).close();
+    }
+    const original = loadOrCreateEgg(directory);
+    const result = launch(directory, 'renderer-crash');
+    const ready = await result.ready as { snapshot: { petId: string; stage: string }; windows: number };
+    assert.equal(ready.snapshot.petId, original.petId);
+    assert.equal(ready.snapshot.stage, stage);
+    assert.equal((await result.closed).code, 0);
+    assert.deepEqual(loadOrCreateEgg(directory), original);
+    const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
+    assert.equal(db.prepare('PRAGMA integrity_check').get()?.integrity_check, 'ok');
+    if (stage === 'baby') {
+      assert.equal(db.prepare('SELECT name FROM pet WHERE singleton=1').get()?.name, '별');
+      assert.equal(db.prepare('SELECT count(*) AS n FROM baby_experience').get()?.n, 0);
+      assert.equal(db.prepare('SELECT count(*) AS n FROM baby_social_experience').get()?.n, 0);
+    }
+    db.close();
+    const log = readFileSync(path.join(directory, 'pet-diagnostics.log'), 'utf8');
+    assert.equal((log.match(/pet_renderer_reload_attempt/g) ?? []).length, 2);
+    assert.match(log, /pet_renderer_recovery_exhausted/);
+    assert.match(log, /pet_renderer_manual_reload/);
+    assert.match(log, /app_quit_requested/);
+    assert.equal(log.includes(original.petId), false);
+    assert.equal(log.includes('별'), false);
+  }
 });
 
 test('corrupt storage makes real startup fail before any egg window is created', async t => {
