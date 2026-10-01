@@ -37,7 +37,7 @@ void window.petBrain.read().then(renderBrain).catch(() => {
 window.addEventListener('unload', unsubscribeBrain, { once: true });
 
 function syncHover(x: number, y: number) {
-  const hit = Boolean(document.elementFromPoint(x, y)?.closest('#egg, #food'));
+  const hit = Boolean(document.elementFromPoint(x, y)?.closest('#egg, #food, #hatch-overlay form, #hatch-overlay button'));
   if (hovering !== hit) {
     hovering = hit;
     window.petWindow.hover(hit);
@@ -134,6 +134,7 @@ function updateBabyLabel() {
 }
 function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   if (!state || state.revision < babyRevision) return;
+  const firstFrame = babyRevision < 0;
   babyRevision = state.revision;
   babyState = state;
   document.documentElement.dataset.stage = 'baby';
@@ -146,6 +147,13 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   // Wake presents first; the latest meal, distance or return expression follows.
   const reunion = Boolean(!waking && state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
   egg.dataset.reunion = String(reunion);
+  if (firstFrame) {
+    const shadow = document.querySelector<HTMLElement>('.shadow')!;
+    egg.style.transition = 'none'; shadow.style.transition = 'none';
+    moveBaby(state.position);
+    void egg.getBoundingClientRect();
+    egg.style.removeProperty('transition'); shadow.style.removeProperty('transition');
+  }
   if (waking) {
     // Keep the body at its sleeping location until the brief wake movement ends.
     egg.style.setProperty('--social-x', '0px');

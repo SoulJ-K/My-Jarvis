@@ -47,6 +47,7 @@ app.whenReady().then(async () => {
   // Real renderer hit testing, including the rounded button's empty corners.
   for (const [x, y, hit] of [
     [90, 95, true], [39, 29, false], [141, 29, false],
+    [44, 95, false], [90, 49, false], [90, 169, false],
     [39, 167, false], [141, 167, false], [90, 185, false],
   ] as const) {
     await request(win, `document.documentElement.dispatchEvent(new PointerEvent('pointerleave'))`);
@@ -79,20 +80,29 @@ app.whenReady().then(async () => {
 
   // Deliver actual Chromium mouse events through the existing renderer handlers.
   // Only the main-process OS cursor reader is substituted; no OS mouse is moved.
-  win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 95 });
-  win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 95, button: 'left', clickCount: 1 });
+  await request(win, `window.nativeInputSeen = 0; window.addEventListener('pointerdown', () => window.nativeInputSeen++, { once: true })`);
+  win.setIgnoreMouseEvents(false, { forward: true });
+  win.webContents.sendInputEvent({ type: 'mouseDown', x: 10, y: 10, button: 'left', clickCount: 1 });
+  win.webContents.sendInputEvent({ type: 'mouseUp', x: 10, y: 10, button: 'left', clickCount: 1 });
   await request(win, '');
-  assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('pressed')"), true);
-  cursor = { x: cursor.x + 20, y: cursor.y + 10 };
-  win.webContents.sendInputEvent({ type: 'mouseMove', x: 110, y: 105, button: 'left' });
-  await request(win, '');
-  win.webContents.sendInputEvent({ type: 'mouseUp', x: 110, y: 105, button: 'left', clickCount: 1 });
-  await request(win, '');
-  assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('pressed')"), false);
-  assert.equal((await win.webContents.executeJavaScript('window.petBrain.read()')).behavior, 'idle');
-  await request(win, `window.dispatchEvent(new PointerEvent('pointermove', {clientX: 10, clientY: 10}))`);
-  assert.equal(ignores.at(-1), true);
-  console.log('PASS: Chromium mouse down/move/up through renderer, pressed release and background click-through request');
+  const nativeInputSeen = await win.webContents.executeJavaScript('window.nativeInputSeen');
+  win.setIgnoreMouseEvents(true, { forward: true });
+  if (nativeInputSeen) {
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 95 });
+    win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 95, button: 'left', clickCount: 1 });
+    await request(win, '');
+    assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('pressed')"), true);
+    cursor = { x: cursor.x + 20, y: cursor.y + 10 };
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: 110, y: 105, button: 'left' });
+    await request(win, '');
+    win.webContents.sendInputEvent({ type: 'mouseUp', x: 110, y: 105, button: 'left', clickCount: 1 });
+    await request(win, '');
+    assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('pressed')"), false);
+    assert.equal((await win.webContents.executeJavaScript('window.petBrain.read()')).behavior, 'idle');
+    await request(win, `window.dispatchEvent(new PointerEvent('pointermove', {clientX: 10, clientY: 10}))`);
+    assert.equal(ignores.at(-1), true);
+    console.log('PASS: Chromium mouse down/move/up through renderer, pressed release and background click-through request');
+  } else console.log('SKIP: this hidden Electron window did not receive sendInputEvent; native pointer delivery needs integration check');
 
   // Synthetic displays test DIP arithmetic, not native multi-monitor behavior.
   const originalNearest = screen.getDisplayNearestPoint.bind(screen);

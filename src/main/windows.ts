@@ -13,6 +13,12 @@ import { BabyReturnBrain, EggBrain } from '../pet/brain';
 const WIDTH = 180;
 const HEIGHT = 200;
 const DIAGNOSTIC_LIMIT = 16 * 1024;
+const babyPlacement = new WeakMap<BrowserWindow, (position: BabyPosition) => void>();
+
+/** Keep the first living frame at the exact on-screen location of the hatch art. */
+export function placeBabyAfterHatch(win: BrowserWindow, position: BabyPosition) {
+  babyPlacement.get(win)?.(position);
+}
 
 // Fixed event codes only: never include a pet ID, text, coordinates or a data path.
 export function recordPetDiagnostic(event: string) {
@@ -56,7 +62,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const initialSize = stageSize(pet.stage);
   const win = new BrowserWindow({
     ...initialPosition(pet.stage), ...initialSize,
-    title: pet.stage === 'baby' ? 'Jarvis Pet · 아기' : 'Jarvis Pet · 임시 알',
+    title: pet.stage === 'baby' ? 'Jarvis Pet · 아기' : 'Jarvis Pet · 별빛 알',
     // focusable:false alone does not prevent macOS from activating the app on click.
     // A non-activating panel keeps the current app active while the egg receives mouse events.
     ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
@@ -185,6 +191,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   };
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
   let babyPosition: BabyPosition = { x: BABY_STAGE.startX, y: BABY_STAGE.startY };
+  babyPlacement.set(win, position => { babyPosition = position; });
   let activeMealTarget: BabyPosition | null = null;
   // Capture the saved observation before the first page read advances life.
   const returnBrain = new BabyReturnBrain(baby?.read()?.observedAtMs ?? null);
@@ -256,6 +263,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     return currentPet();
   });
   win.on('closed', () => {
+    babyPlacement.delete(win);
     recordPetDiagnostic('pet_window_closed');
     clearTimeout(recoveryTimer);
     clearTimeout(healthyTimer);

@@ -49,3 +49,17 @@ contextBridge.exposeInMainWorld('babyLife', {
     return () => ipcRenderer.removeListener('baby:save-failed', receive);
   },
 });
+
+// The witnessed sequence uses this same pet window, never a second renderer.
+contextBridge.exposeInMainWorld('hatch', {
+  read: () => ipcRenderer.invoke('hatch:read'),
+  witness: (revision: number, epoch: number, scene: import('../pet/lifecycle').HatchScene) =>
+    ipcRenderer.invoke('hatch:witness', revision, epoch, scene),
+  name: (revision: number, epoch: number, name: string) =>
+    ipcRenderer.invoke('hatch:name', revision, epoch, name),
+  subscribe: (listener: () => void) => {
+    const receive = () => listener();
+    ipcRenderer.on('hatch:changed', receive);
+    return () => ipcRenderer.removeListener('hatch:changed', receive);
+  },
+});
