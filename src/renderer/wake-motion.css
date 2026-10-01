@@ -1,0 +1,25 @@
+/* Presentation only: translate is separate from the baby's stored position transform. */
+#egg.baby-idle[data-waking=true] { animation: baby-wake-body 1260ms ease-out 1 both; }
+#egg.baby-idle[data-waking=true] .shell { animation: baby-wake-shape 1260ms ease-out 1 both; }
+@keyframes baby-wake-body {
+  0%, 22% { translate: 0 0; }
+  8% { translate: -2px 0; }
+  16% { translate: 2px 0; }
+  39% { translate: 0 -17px; }
+  53%, 61% { translate: 0 0; }
+  79% { translate: 0 -11px; }
+  94%, 100% { translate: 0 0; }
+}
+@keyframes baby-wake-shape {
+  0% { transform: scale(1.06, .85); }
+  8% { transform: scale(1.06, .85) rotate(-3deg); }
+  16% { transform: scale(1.06, .85) rotate(3deg); }
+  22% { transform: scale(1.08, .82); }
+  39% { transform: scale(.97, 1.07); }
+  53%, 61% { transform: scale(1.035, .94); }
+  79% { transform: scale(.99, 1.035); }
+  94%, 100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #egg.baby-idle[data-waking=true], #egg.baby-idle[data-waking=true] .shell { animation: none; }
+}

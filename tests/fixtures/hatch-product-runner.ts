@@ -139,6 +139,15 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
         assert.equal(await run('getComputedStyle(document.querySelector("#hatch-overlay .hatch-egg")).animationName'), 'none');
         await pet.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [] });
         pet.webContents.debugger.detach();
+        // Prelude sway must not replace the approved 80% visual scale.
+        assert.equal(await run(`(() => {
+          const egg = document.querySelector('#hatch-overlay .hatch-egg');
+          const animation = egg.getAnimations()[0];
+          if (!animation) return false;
+          animation.pause(); animation.currentTime = 550;
+          const matrix = new DOMMatrix(getComputedStyle(egg).transform);
+          return Math.abs(matrix.a - .8) < .001 && Math.abs(matrix.d - .8) < .001;
+        })()`), true);
         assert.deepEqual(await run('Object.keys(window.hatch).sort()'), ['name', 'read', 'subscribe', 'witness']);
         assert.equal(await run('typeof require'), 'undefined');
         assert.equal(await run('typeof window.ipcRenderer'), 'undefined');

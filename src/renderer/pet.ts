@@ -107,6 +107,7 @@ let feeding = false;
 let babySaveFailed = false;
 let activeMealId: string | undefined;
 let displayedBabyPosition = { x: 36, y: 152 };
+const wakeMotion = new BabyWakeMotion(() => { if (babyState) renderBaby(babyState); });
 function moveBaby(position: { x: number; y: number }) {
   displayedBabyPosition = position;
   egg.style.setProperty('--body-y', `${position.y}px`);
@@ -118,7 +119,8 @@ function moveBaby(position: { x: number; y: number }) {
 }
 function updateBabyLabel() {
   const state = babyState;
-  const activity = !state ? '' : state.behavior === 'sleeping' ? '자고 있습니다' :
+  const activity = !state ? '' : wakeMotion.active ? '잠에서 깨어나고 있습니다' :
+    state.behavior === 'sleeping' ? '자고 있습니다' :
     state.behavior === 'drowsy' ? '졸려 꾸벅이고 있습니다' :
     state.behavior === 'approaching' ? '먹이로 다가가고 있습니다' :
     state.behavior === 'eating' ? '먹이를 먹고 있습니다' :
@@ -137,11 +139,13 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   babyState = state;
   document.documentElement.dataset.stage = 'baby';
   egg.classList.add('baby-idle');
-  egg.dataset.life = state.behavior;
+  const waking = wakeMotion.observe(state.behavior);
+  egg.dataset.waking = String(waking);
+  egg.dataset.life = waking ? 'resting' : state.behavior;
   egg.dataset.dayPeriod = state.dayPeriod;
-  document.querySelector<HTMLElement>('.shadow')!.dataset.approaching = String(state.behavior === 'approaching');
-  // Sleeping/eating and requests for space take priority; no queued greeting.
-  const reunion = Boolean(state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
+  document.querySelector<HTMLElement>('.shadow')!.dataset.approaching = String(!waking && state.behavior === 'approaching');
+  // Wake presents first; the latest meal, distance or return expression follows.
+  const reunion = Boolean(!waking && state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
   egg.dataset.reunion = String(reunion);
   if (firstFrame) {
     const shadow = document.querySelector<HTMLElement>('.shadow')!;
@@ -150,7 +154,10 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
     void egg.getBoundingClientRect();
     egg.style.removeProperty('transition'); shadow.style.removeProperty('transition');
   }
-  if (state.meal) {
+  if (waking) {
+    // Keep the body at its sleeping location until the brief wake movement ends.
+    egg.style.setProperty('--social-x', '0px');
+  } else if (state.meal) {
     if (activeMealId !== state.meal.id) {
       activeMealId = state.meal.id;
       const remaining = Math.max(0, state.meal.approachMs - state.meal.progressMs);
@@ -165,28 +172,30 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
     activeMealId = undefined;
     if (displayedBabyPosition.x !== state.position.x || displayedBabyPosition.y !== state.position.y) moveBaby(state.position);
   }
-  const socialStep = state.behavior === 'resting' || state.behavior === 'drowsy' ?
-    state.social.motion === 'away' ? 18 : state.social.motion === 'near' ? -8 :
-      state.social.motion === 'chase' ? (egg.dataset.direction === 'left' ? -14 : 14) : 0 : 0;
-  egg.style.setProperty('--social-x', `${Math.max(8, Math.min(308, state.position.x + socialStep)) - state.position.x}px`);
+  if (!waking) {
+    const socialStep = state.behavior === 'resting' || state.behavior === 'drowsy' ?
+      state.social.motion === 'away' ? 18 : state.social.motion === 'near' ? -8 :
+        state.social.motion === 'chase' ? (egg.dataset.direction === 'left' ? -14 : 14) : 0 : 0;
+    egg.style.setProperty('--social-x', `${Math.max(8, Math.min(308, state.position.x + socialStep)) - state.position.x}px`);
+  }
   if (foodPointer === undefined) {
     food.hidden = !state.offerId && !state.meal;
     food.disabled = Boolean(state.meal) || feeding;
     food.style.left = `${(state.meal?.x ?? 372) - 22}px`;
     food.style.top = `${(state.meal?.y ?? 200) - 22}px`;
   }
-  food.dataset.eating = String(state.behavior === 'eating');
-  const chewProgress = state.meal ? Math.max(0, Math.min(1,
+  food.dataset.eating = String(!waking && state.behavior === 'eating');
+  const chewProgress = !waking && state.meal ? Math.max(0, Math.min(1,
     (state.meal.progressMs - state.meal.approachMs) / state.meal.chewMs)) : 0;
   food.style.setProperty('--food-bite', String(1 - chewProgress * .9));
   sleepSymbol.hidden = state.behavior !== 'sleeping';
   updateBabyLabel();
-  egg.dataset.social = state.social.motion;
+  egg.dataset.social = waking ? 'quiet' : state.social.motion;
   const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
   orb.hidden = !state.social.orb;
   orb.dataset.orbId = state.social.orb?.id ?? '';
   orb.dataset.expression = state.social.orb?.expression ?? 'quiet';
-  orb.dataset.play = String(state.social.motion === 'play-orb');
+  orb.dataset.play = String(!waking && state.social.motion === 'play-orb');
   if (babySaveFailed) { document.querySelector('#save-status')!.textContent = ''; babySaveFailed = false; }
 }
 function showBabyFailure() {
@@ -196,7 +205,7 @@ function showBabyFailure() {
 const unsubscribeBaby = window.babyLife.subscribe(renderBaby);
 const unsubscribeBabyFailure = window.babyLife.onSaveFailed(showBabyFailure);
 void window.babyLife.read().then(renderBaby).catch(showBabyFailure);
-window.addEventListener('unload', () => { unsubscribeBaby(); unsubscribeBabyFailure(); }, { once: true });
+window.addEventListener('unload', () => { unsubscribeBaby(); unsubscribeBabyFailure(); wakeMotion.dispose(); }, { once: true });
 async function placeFood(x: number, y: number) {
   if (!babyState?.offerId || feeding) return;
   if (x < 0 || x > 420 || y < 0 || y > 300) {
