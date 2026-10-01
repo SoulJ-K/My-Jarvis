@@ -46,6 +46,12 @@ export async function createHatchWindow(store: LifecycleRepository, win: Browser
     // The art is offset by the actual window shift, including edge clamping.
     layout = { x: bounds.x - x, y: bounds.y - y, expanded: true };
   };
+  const makeNamingRoom = () => {
+    // The 54px card sits 8px above the bottom; leave 2px below the baby.
+    // Only the bottom-edge exception may move the pet away from its hatch position.
+    const maxY = BABY_SIZE.height - 8 - 54 - 2 - (76 + 92);
+    layout = { ...layout, y: Math.min(layout.y, maxY) };
+  };
   const lock = () => { locked = true; changed(); };
   const unlock = () => { locked = false; changed(); };
   const suspend = () => { suspended = true; changed(); };
@@ -75,6 +81,7 @@ export async function createHatchWindow(store: LifecycleRepository, win: Browser
     const saved = store.apply(Number(args[0]), { type: 'witness', scene: args[2] as HatchScene });
     if (saved.completed === 'baby') expand();
     if (saved.completed === 'contact') {
+      makeNamingRoom();
       win.setFocusable(true);
       win.setIgnoreMouseEvents(false);
       win.show(); win.focus();
@@ -112,6 +119,7 @@ export async function createHatchWindow(store: LifecycleRepository, win: Browser
     if (expandedScene(state)) expand();
     active = true;
     if (state.completed === 'contact') {
+      makeNamingRoom();
       win.setFocusable(true);
       win.setIgnoreMouseEvents(false);
       win.show(); win.focus();

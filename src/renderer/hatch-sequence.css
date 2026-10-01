@@ -103,7 +103,7 @@ html[data-hatching=true] .shadow, html[data-hatching=true] #save-status { displa
 .inline > button[hidden] { display: none; }
 .inline form { position: absolute; z-index: 5; bottom: 8px;
   left: clamp(8px, calc(90px + var(--hatch-x, 0px) - 120px), calc(100% - 248px));
-  width: 240px; min-height: 0; padding: 3px 8px 4px; margin: 0; border: 1px solid #c9d4e6;
+  width: 240px; height: 54px; box-sizing: border-box; min-height: 0; padding: 3px 8px 4px; margin: 0; border: 1px solid #c9d4e6;
   border-radius: 11px; background: #f6f4edf2; color: #27364b; text-align: left;
   box-shadow: 0 5px 16px #0b122455; pointer-events: auto; }
 .inline form label { display: block; font-size: 11px; line-height: 13px; }

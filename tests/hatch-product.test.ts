@@ -52,6 +52,12 @@ test('production IPC, pause epochs, scene/name write failures and committed baby
   assert.equal(result.name, '별');
   assert.deepEqual(launch(directory, 'inspect'), result);
 });
+test('bottom-edge hatch keeps the naming card below the baby', t => {
+  const directory = workspace(t);
+  const seed = new LifecycleRepository(directory, options);
+  seed.apply(0, { type: 'prepare' }); seed.close();
+  assert.equal(launch(directory, 'exercise-edge').name, '별');
+});
 test('injected readiness policy: startup, resume and real care prepare without opening or witnessing; restart retains it', t => {
   for (const mode of ['ready-startup', 'ready-live', 'ready-care']) {
     const directory = workspace(t);

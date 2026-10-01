@@ -10,12 +10,12 @@ import { hatchScenes, nextHatchStep, type Lifecycle } from '../../src/pet/lifecy
 import type { HatchView } from '../../src/shared/hatch';
 
 const [directory, mode, clockValue] = process.argv.slice(2);
-if (!directory || !['inspect', 'step', 'exercise', 'ready-live', 'ready-care', 'ready-startup',
+if (!directory || !['inspect', 'step', 'exercise', 'exercise-edge', 'ready-live', 'ready-care', 'ready-startup',
   'activation', 'policy-inspect', 'policy-activation', 'policy-live', 'policy-care'].includes(mode)) {
   throw new Error('INVALID_TEST_ARGUMENTS');
 }
 app.setPath('userData', directory);
-const interactive = ['step', 'exercise', 'activation', 'policy-activation'].includes(mode);
+const interactive = ['step', 'exercise', 'exercise-edge', 'activation', 'policy-activation'].includes(mode);
 let trayMenu: Menu | undefined;
 let electronForApp: typeof import('electron') | undefined;
 if (interactive) {
@@ -116,6 +116,10 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
         app.emit(event); await pause();
         assert.deepEqual(state(), original);
       }
+      if (mode === 'exercise-edge') {
+        const area = screen.getDisplayMatching(pet.getBounds()).workArea;
+        pet.setPosition(area.x + area.width - 180, area.y + area.height - 200);
+      }
       (trayMenu!.items[1].click as () => void)();
       await until(async () => (await read()).available);
       assert.equal(pet.isVisible(), true);
@@ -132,7 +136,7 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
           assert.deepEqual(pet.getSize(), [420, 300]);
           assert.equal((await read()).layout.expanded, true);
         } else if (state().completed !== 'contact') assert.deepEqual(pet.getSize(), [180, 200]);
-      } else if (mode === 'exercise') {
+      } else if (mode.startsWith('exercise')) {
         pet.webContents.debugger.attach('1.3');
         await pet.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',
           { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
@@ -207,6 +211,7 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
             assert.ok(afterBounds.y + afterBounds.height <= area.y + area.height);
           }
         }
+        if (mode === 'exercise-edge') assert.equal((await read()).layout.y, 68);
         await until(() => rendered('naming'));
         await until(() => run('Boolean(document.querySelector("#hatch-overlay form input"))'));
         await pause(120);
