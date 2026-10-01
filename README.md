@@ -61,4 +61,4 @@ npm test
 - [캐릭터·성장 설계](docs/Jarvis_Pet_Character_and_Growth_Design_v0.1.md): 탄생, 돌봄, 감정과 관계
 - [기술 설계](docs/Jarvis_Pet_Technical_Design_v0.1.md): 구조, 구현 단계와 검증 계획
 - [결정 기록](docs/Jarvis_Pet_Decision_Log_v0.1.md): 결정 이유와 변경 이력
-- [이전 README 원문](docs/README_archive_2026-10-01.md): 작업별 검증과 개발 기록을 포함한 보관본
+- [이전 README 원문](README_archive_2026-10-01.md): 작업별 검증과 개발 기록을 포함한 보관본
