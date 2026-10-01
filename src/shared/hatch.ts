@@ -4,6 +4,8 @@ export interface HatchView {
   state: Lifecycle;
   available: boolean;
   epoch: number;
+  /** Presentation offset after the same transparent window expands. */
+  layout: { x: number; y: number; expanded: boolean };
 }
 export interface HatchAPI {
   read(): Promise<HatchView>;

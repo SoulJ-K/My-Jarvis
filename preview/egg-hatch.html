@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis Pet 알·아기·부화 비교 시안</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #101522; color: #f4f3ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: clamp(18px, 4vw, 42px); }
+    header, .controls, .comparison, .note { max-width: 1080px; margin-inline: auto; }
+    h1 { margin: 0 0 7px; font-size: clamp(25px, 4vw, 36px); letter-spacing: -.03em; }
+    p { margin: 0; }
+    header p, .note { color: #c0c9d5; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px 24px; margin-top: 26px; margin-bottom: 24px; align-items: end; }
+    .control-group { display: grid; gap: 8px; }
+    .control-group strong { font-size: 13px; color: #bdc9d9; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { font: inherit; min-height: 44px; padding: 8px 13px; border: 1px solid #66758d; border-radius: 10px; color: #f4f3ed; background: #222d40; cursor: pointer; }
+    button:hover { background: #32415b; }
+    button[aria-pressed=true], #replay { background: #445d83; border-color: #a9c1e0; }
+    button:focus-visible { outline: 3px solid #f4ca72; outline-offset: 3px; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .card { padding: 16px; border: 1px solid #445166; border-radius: 20px; background: #1b2433; }
+    .card.selected { border-color: #e6d388; box-shadow: 0 0 0 2px #e6d38855; }
+    .card h2 { font-size: 19px; margin: 0; }
+    .card .sub { color: #c2cbda; font-size: 13px; margin: 2px 0 14px; }
+    .desk { display: grid; place-items: center; min-height: 320px; border: 1px solid #445166; border-radius: 14px;
+      background-color: #182032; background-image: linear-gradient(45deg,#263149 25%,transparent 25%),linear-gradient(-45deg,#263149 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#263149 75%),linear-gradient(-45deg,transparent 75%,#263149 75%); background-size: 24px 24px; background-position: 0 0,0 12px,12px -12px,-12px 0; }
+    .window { position: relative; width: 180px; height: 200px; max-width: 100%; overflow: hidden; background: transparent; outline: 1px dashed #b9c6d778; transition: width .65s ease, height .65s ease; }
+    .window.expanded { width: 420px; height: 300px; }
+    .window::before { content: '알 창 180 × 200'; position: absolute; z-index: 5; left: 7px; top: 5px; font-size: 10px; color: #cdd8ea; }
+    .window.expanded::before { content: '아기 창 420 × 300'; }
+    .figure { --scale: 1; --shell: #405284; --edge: #b8a4dc; --glow: #b6b1ff; --mark: #f3d58b; --baby: #bed8ce; --baby-edge: #527c71; --offset-x: 0px; --offset-y: 0px; position: absolute; inset: 0; }
+    .figure[data-expanded="true"] { --offset-x: 120px; --offset-y: 50px; }
+    .figure[data-size="80"] { --scale: .8; }
+    body[data-theme="forest"] .figure { --shell: #426d63; --edge: #c3cc91; --glow: #b9e8be; --mark: #ecdf9d; }
+    body[data-theme="pearl"] .figure { --shell: #ddd4e8; --edge: #9a8bb1; --glow: #ffe2d2; --mark: #ad84b4; }
+    .shadow { position: absolute; left: calc(38px + var(--offset-x)); top: calc(169px + var(--offset-y)); width: 104px; height: 14px; border-radius: 50%; background: #090c1899; filter: blur(8px); transform: scale(var(--scale)); }
+    .egg, .half { position: absolute; left: calc(38px + var(--offset-x)); top: calc(28px + var(--offset-y)); width: 104px; height: 140px; transform: scale(var(--scale)); transform-origin: 50% 100%; border-radius: 50% 50% 47% 47% / 62% 62% 38% 38%; border: 2px solid var(--edge); background: radial-gradient(ellipse at 34% 22%,#ffffff93 0%,transparent 37%), radial-gradient(ellipse at 50% 60%,var(--shell) 0%,#263354 100%); box-shadow: inset -8px -9px 14px #08122566, 0 0 24px var(--glow); }
+    body[data-theme="pearl"] .egg, body[data-theme="pearl"] .half { background: radial-gradient(ellipse at 34% 22%,#fff 0%,transparent 39%), var(--shell); }
+    .egg::before, .half::before { content: ''; position: absolute; inset: 16px 20px 19px; border: 2px solid var(--mark); border-radius: 49%; opacity: .85; clip-path: polygon(0 0,100% 0,100% 25%,0 25%,0 66%,100% 66%,100% 100%,0 100%); }
+    .egg::after, .half::after { content: '✦'; position: absolute; top: 42px; left: 39px; color: var(--mark); font-size: 23px; text-shadow: 0 0 11px var(--glow); }
+    .crack { display: none; position: absolute; z-index: 2; left: calc(82px + var(--offset-x)); top: calc(64px + var(--offset-y)); width: 24px; height: 76px; transform: scale(var(--scale)); background: #fff1ca; clip-path: polygon(37% 0,94% 31%,41% 48%,84% 75%,18% 100%,38% 70%,0 47%,56% 29%); filter: drop-shadow(0 0 8px var(--glow)); }
+    .half { display: none; z-index: 3; clip-path: polygon(0 0,100% 0,100% 47%,58% 54%,38% 44%,0 53%); transform: translate(-26px,-16px) rotate(-18deg) scale(var(--scale)); }
+    .half.right { clip-path: polygon(0 53%,38% 44%,58% 54%,100% 47%,100% 100%,0 100%); transform: translate(27px,12px) rotate(16deg) scale(var(--scale)); }
+    .orb { display: none; position: absolute; z-index: 4; left: calc(130px + var(--offset-x)); top: calc(18px + var(--offset-y)); width: 25px; height: 25px; border-radius: 50%; border: 2px solid #f9e8a4; background: radial-gradient(circle at 32% 28%,white,#f7df77 43%,#b1873e); box-shadow: 0 0 16px #f9d867; }
+    .baby { display: none; position: absolute; z-index: 2; left: calc(38px + var(--offset-x)); top: calc(76px + var(--offset-y)); width: 104px; height: 92px; transform: scale(var(--scale)); transform-origin: 50% 100%; border-radius: 48% 48% 42% 42%; border: 3px solid var(--baby-edge); background: var(--baby); box-shadow: inset 5px 7px 11px #ffffff77; }
+    .baby::before { content: ''; position: absolute; width: 6px; height: 9px; left: 28px; top: 29px; border-radius: 50%; background: #243548; box-shadow: 29px 0 #243548; }
+    .baby::after { content: ''; position: absolute; width: 12px; height: 3px; left: 43px; top: 60px; border-radius: 50%; background: #243548; }
+    .name-card { display: none; position: absolute; z-index: 5; left: 50%; bottom: 8px; translate: -50% 0; width: 270px; padding: 5px 9px 7px; border: 1px solid #c9d4e6; border-radius: 11px; background: #f6f4edf0; color: #27364b; box-shadow: 0 5px 16px #0b122455; }
+    .name-card small { display: block; font-size: 11px; text-align: left; }
+    .name-card span { display: block; height: 27px; margin-top: 3px; padding: 3px 6px; border: 1px solid #8494ad; border-radius: 5px; background: white; text-align: left; font-size: 13px; color: #65738a; }
+    [data-step="prelude"] .egg { animation: sway 1s ease-in-out infinite alternate; }
+    [data-step="crack"] .crack, [data-step="orb"] .crack { display: block; }
+    [data-step="orb"] .orb, [data-step="shell"] .orb, [data-step="baby"] .orb, [data-step="contact"] .orb, [data-step="naming"] .orb { display: block; }
+    [data-step="shell"] .egg { display: none; }
+    [data-step="shell"] .half { display: block; }
+    [data-step="baby"] .egg, [data-step="contact"] .egg, [data-step="naming"] .egg { display: none; }
+    [data-step="baby"] .baby, [data-step="contact"] .baby, [data-step="naming"] .baby { display: block; }
+    [data-step="contact"] .baby { animation: approach .7s ease-out both; }
+    [data-step="naming"] .name-card { display: block; }
+    @keyframes sway { to { transform: rotate(4deg) scale(var(--scale)); } }
+    @keyframes approach { from { translate: -12px 0; } to { translate: 0 0; } }
+    .stage-label { margin-top: 12px; font-weight: 700; }
+    .stage-detail { color: #c2cbda; font-size: 14px; min-height: 42px; }
+    .note { margin-top: 20px; font-size: 14px; }
+    @media (max-width: 950px) { .comparison { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body data-theme="night">
+  <header><h1>알에서 아기까지, 같은 자리에서</h1><p>선택하신 밤하늘·별빛 분위기, 아기 등장 뒤 창 확장, 알·아기 약 80% 크기를 반영한 비교 시안입니다. 실제 펫 자료를 읽거나 저장하지 않습니다.</p></header>
+  <section class="controls" aria-label="시안 조작">
+    <div class="control-group"><strong>알 분위기 탐색</strong><div class="buttons" id="themes">
+      <button type="button" data-theme="night" aria-pressed="true">밤하늘·별빛</button>
+      <button type="button" data-theme="forest" aria-pressed="false">숲·이끼·잎맥</button>
+      <button type="button" data-theme="pearl" aria-pressed="false">진주·새벽빛</button>
+    </div></div>
+    <div class="control-group"><strong>부화 장면</strong><div class="buttons"><button type="button" id="replay">처음부터 다시 보기</button><button type="button" id="next">한 장면씩 보기</button></div></div>
+  </section>
+  <section class="comparison" aria-label="같은 조건의 크기 비교">
+    <article class="card"><h2>현재 크기 · 100%</h2><p class="sub">알 104×140 · 아기 104×92</p><div class="desk"><div class="window"><div class="figure" data-size="100" data-step="egg" aria-hidden="true"><div class="shadow"></div><div class="egg"></div><div class="crack"></div><div class="half"></div><div class="half right"></div><div class="orb"></div><div class="baby"></div><div class="name-card"><small>어떤 이름으로 부를까요?</small><span>이름 입력 위치 시안</span></div></div></div></div><p class="stage-label" aria-live="polite"></p><p class="stage-detail"></p></article>
+    <article class="card selected"><h2>선택한 크기 · 약 80%</h2><p class="sub">알 약 83×112 · 아기 약 83×74</p><div class="desk"><div class="window"><div class="figure" data-size="80" data-step="egg" aria-hidden="true"><div class="shadow"></div><div class="egg"></div><div class="crack"></div><div class="half"></div><div class="half right"></div><div class="orb"></div><div class="baby"></div><div class="name-card"><small>어떤 이름으로 부를까요?</small><span>이름 입력 위치 시안</span></div></div></div></div><p class="stage-label" aria-live="polite"></p><p class="stage-detail"></p></article>
+  </section>
+  <p class="note">부화 중에는 현재 알 창 크기 180×200을, 아기가 나온 다음 장면부터 아기 생활 창 크기 420×300을 보여줍니다. 이름 카드 위치는 선택하신 아기 아래 배치를 나타냅니다. 비교를 위해 창과 펫의 중심을 맞췄으며 실제 창의 확장 방향·위치와 장면별 재생 시간은 아직 미정입니다. 재생은 브라우저에서만 진행되며 실제 부화 저장 지점과 연결되지 않습니다.</p>
+  <script>
+    const steps = [
+      ['egg','알','알이 있던 자리에서 시작합니다.'],
+      ['prelude','전조','알이 작게 흔들립니다.'],
+      ['crack','금','알에 금이 생깁니다.'],
+      ['orb','감정구슬','구슬이 먼저 밖으로 나옵니다.'],
+      ['shell','껍질','알이 완전히 갈라집니다.'],
+      ['baby','아기','아기가 나와 주변을 살핍니다.'],
+      ['contact','첫 교감','아기가 사용자를 보고 조금 다가옵니다.'],
+      ['naming','이름 짓기','첫 교감 뒤 아기 아래 카드에서 이름을 짓습니다.'],
+    ];
+    let step = 0;
+    let timers = [];
+    function show(index) {
+      step = index;
+      const expanded = index >= 6;
+      document.querySelectorAll('.window').forEach(el => { el.classList.toggle('expanded', expanded); });
+      document.querySelectorAll('.figure').forEach(el => { el.dataset.step = steps[index][0]; el.dataset.expanded = String(expanded); });
+      document.querySelectorAll('.stage-label').forEach(el => { el.textContent = `${index + 1} / ${steps.length} · ${steps[index][1]}`; });
+      document.querySelectorAll('.stage-detail').forEach(el => { el.textContent = steps[index][2]; });
+    }
+    function stop() { timers.forEach(clearTimeout); timers = []; }
+    function replay() {
+      stop(); show(0);
+      for (let i = 1; i < steps.length; i++) timers.push(setTimeout(() => show(i), i * 1100));
+    }
+    document.querySelector('#replay').addEventListener('click', replay);
+    document.querySelector('#next').addEventListener('click', () => { stop(); show((step + 1) % steps.length); });
+    document.querySelector('#themes').addEventListener('click', event => {
+      const target = event.target.closest('button[data-theme]'); if (!target) return;
+      document.body.dataset.theme = target.dataset.theme;
+      document.querySelectorAll('#themes button').forEach(button => button.setAttribute('aria-pressed', String(button === target)));
+    });
+    show(0);
+  </script>
+</body>
+</html>
