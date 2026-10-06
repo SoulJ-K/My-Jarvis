@@ -64,10 +64,10 @@ egg.addEventListener('pointerdown', event => {
   egg.classList.add('pressed');
   window.petWindow.beginDrag();
 });
-egg.addEventListener('pointerup', async event => {
+window.addEventListener('pointerup', async event => {
   if (event.pointerId !== activePointer) return;
   activePointer = undefined;
-  egg.releasePointerCapture(event.pointerId);
+  if (egg.hasPointerCapture(event.pointerId)) egg.releasePointerCapture(event.pointerId);
   egg.classList.remove('pressed', 'stroking');
   await window.petWindow.endDrag();
   // Main resets click-through after each gesture; force the current hover to resync.

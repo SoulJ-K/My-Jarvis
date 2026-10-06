@@ -35,13 +35,26 @@ test('gesture boundaries: 6 DIP, hold at 350ms, short reversal; drag mode stays 
   stroke.move(origin, 400);
   assert.equal(stroke.finish(), 'stroke');
 });
-test('one-way movement, tiny jitter, hold only and large departure cannot count as stroke', () => {
+test('one-way movement, tiny jitter and hold only cannot count as stroke', () => {
   for (const points of [[], [{ x: 125, y: 100 }], [{ x: 103, y: 100 }, origin],
-    [{ x: 197, y: 100 }, origin], [{ x: 112, y: 197 }, origin]]) {
+    [{ x: 197, y: 100 }], [{ x: 112, y: 197 }]]) {
     const gesture = new EggGesture(origin, origin, 0);
     gesture.arm(350);
     for (const point of points) gesture.move(point, 400);
     assert.equal(gesture.finish(), undefined);
+  }
+});
+test('held diagonal and broad back-and-forth strokes remain valid when released beyond the egg', () => {
+  for (const [outbound, inbound] of [
+    [{ x: 130, y: 140 }, { x: 120, y: 130 }],
+    [{ x: 197, y: 100 }, { x: 185, y: 100 }],
+    [{ x: 112, y: 197 }, { x: 100, y: 185 }],
+  ] as const) {
+    const gesture = new EggGesture(origin, origin, 0);
+    gesture.arm(350);
+    gesture.move(outbound, 400);
+    gesture.move(inbound, 430);
+    assert.equal(gesture.finish(), 'stroke');
   }
 });
 function workspace(t: test.TestContext) {

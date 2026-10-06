@@ -3,14 +3,14 @@ export interface Point { x: number; y: number }
 export class EggGesture {
   moved = false;
   stroking = false;
-  private lastX: number;
-  private direction = 0;
+  private lastPoint: Point;
+  private axis: Point | undefined;
+  private furthest = 0;
   private travel = 0;
   private reversed = false;
-  private outside = false;
   constructor(readonly cursor: Point, readonly origin: Point, private startedAt: number,
     private allowStroke = true) {
-    this.lastX = cursor.x;
+    this.lastPoint = cursor;
   }
   arm(now: number): boolean {
     if (this.allowStroke && !this.moved && now - this.startedAt >= 350) this.stroking = true;
@@ -20,18 +20,21 @@ export class EggGesture {
     this.arm(now);
     if (Math.hypot(cursor.x - this.cursor.x, cursor.y - this.cursor.y) >= 6) this.moved = true;
     if (!this.stroking) return;
-    if (Math.hypot(cursor.x - this.cursor.x, cursor.y - this.cursor.y) > 96) this.outside = true;
-    const dx = cursor.x - this.lastX;
-    // Ignore small jitter; a real reversal needs at least 6 DIP in the other direction.
-    if (Math.abs(dx) < 6) return;
-    const direction = Math.sign(dx);
-    if (this.direction && direction !== this.direction) this.reversed = true;
-    this.direction = direction;
-    this.travel += Math.abs(dx);
-    this.lastX = cursor.x;
+    const dx = cursor.x - this.lastPoint.x;
+    const dy = cursor.y - this.lastPoint.y;
+    const distance = Math.hypot(dx, dy);
+    // Ignore tiny pointer jitter; use the first intentional stroke as its axis.
+    if (distance < 6) return;
+    if (!this.axis) this.axis = { x: dx / distance, y: dy / distance };
+    const projection = (cursor.x - this.cursor.x) * this.axis.x +
+      (cursor.y - this.cursor.y) * this.axis.y;
+    this.furthest = Math.max(this.furthest, projection);
+    if (this.furthest - projection >= 6) this.reversed = true;
+    this.travel += distance;
+    this.lastPoint = cursor;
   }
   finish(): 'touch' | 'stroke' | undefined {
-    if (this.stroking) return !this.outside && this.reversed && this.travel >= 18 ? 'stroke' : undefined;
+    if (this.stroking) return this.reversed && this.travel >= 18 ? 'stroke' : undefined;
     return this.moved ? undefined : 'touch';
   }
 }
