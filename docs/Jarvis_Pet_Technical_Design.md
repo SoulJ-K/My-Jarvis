@@ -728,6 +728,8 @@ CI는 PR(변경 검토 요청)이 올라올 때 실행하는 자동 점검이다
 
 [`test:ci`](../scripts/test-ci.mjs)는 빌드 뒤 `brain`, `egg-life`, `lifecycle`, `baby-social`, `timer`, `reminders`, `storage`의 7개 `.test.ts`에 대응하는 파일만 일반 Node.js 24로 순차 실행한다. 개별 검사 제한 60초·선택 묶음 전체 제한 120초를 두며 오류·강제 종료를 성공으로 처리하지 않는다. 기존 검사 코드가 만드는 새 임시 자료만 사용한다. CI 설치에서는 Electron 실행 파일 다운로드를 생략한다.
 
+**검사 시간대:** 선택 검사의 자식 프로세스는 `Asia/Seoul`로 고정한다. 기존 사회 반응 검사는 epoch 0(1970-01-01 UTC 00:00)을 한국의 낮 09:00으로 가정했으므로, UTC에서는 밤으로 판정해 3개가 실패했다. 최초 GitHub 실행은 81개 통과·3개 실패였으며 로컬 UTC에서도 같은 3개가 실패하고 한국 시간대에서는 84개가 통과했다. 검사 실행 환경만 고정하며 제품의 기기 현지 시간 정책·Mac 시스템 설정은 변경하지 않는다. 이 선택 검사의 통과를 모든 시간대 검증으로 확대하지 않는다. 최초 실패와 보완 후 결과는 PR에서 별도로 보존한다.
+
 **선택 이유와 한계:** 기존 `npm test`는 Electron 내장 Node와 앱을 사용한다. `baby-life`·재시작·부화 제품·시작 검사는 `.test.ts`라도 자식 프로세스에서 Electron을 실행하므로 최소 CI에서 제외한다. 화면 없는 규칙·저장을 먼저 검사하면 창·초점·운영체제 권한에 의존하지 않는 작은 점검을 유지할 수 있다. 일반 Node.js와 Electron의 실행 환경은 다르므로 SQLite·Electron 연결 호환성을 이 CI 하나로 보장하지 않는다. 기존 전체 검사는 그대로 유지하고 Escape 검사와 함께 Mac에서 별도 조율 후 실행한다. 실제 배너·소리·잠금·절전·며칠 생활 및 인터넷 단절 실기기 검사를 대체하지 않는다.
 
 **비용·운영:** 비공개 저장소는 계정의 포함 시간을 사용하며 초과 사용에 비용이 생길 수 있다. 잔여 시간·결제 설정은 이번 작업에서 확인하거나 변경하지 않는다. Linux 한 작업으로 시작하며 macOS 작업·다중 환경·정기 실행은 추가하지 않는다. [GitHub 권한·시간 제한](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [요금 기준](https://docs.github.com/en/billing/concepts/product-billing/github-actions)을 따른다. GitHub 전송·PR 실행 전에는 실제 Ubuntu CI 통과로 표시하지 않는다.
