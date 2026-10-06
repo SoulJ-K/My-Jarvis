@@ -104,6 +104,35 @@ app.whenReady().then(async () => {
     console.log('PASS: Chromium mouse down/move/up through renderer, pressed release and background click-through request');
   } else console.log('SKIP: this hidden Electron window did not receive sendInputEvent; native pointer delivery needs integration check');
 
+  // A held stroke may run diagonally and end outside the egg's hit shape.
+  const strokeOrigin = win.getPosition();
+  cursor = { x: strokeOrigin[0] + 90, y: strokeOrigin[1] + 95 };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 95 });
+  win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 95, button: 'left', clickCount: 1 });
+  await request(win, '');
+  await new Promise(resolve => setTimeout(resolve, 390));
+  assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('stroking')"), true);
+  cursor = { x: strokeOrigin[0] + 160, y: strokeOrigin[1] + 140 };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 160, y: 140, button: 'left' });
+  await request(win, 'window.petWindow.moveDrag()');
+  cursor = { x: strokeOrigin[0] + 150, y: strokeOrigin[1] + 130 };
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 150, y: 130, button: 'left' });
+  await request(win, 'window.petWindow.moveDrag()');
+  win.webContents.sendInputEvent({ type: 'mouseUp', x: 150, y: 130, button: 'left', clickCount: 1 });
+  await request(win, '');
+  assert.equal(await win.webContents.executeJavaScript("document.querySelector('#egg').classList.contains('pressed')"), false);
+  assert.equal((await win.webContents.executeJavaScript('window.petBrain.read()')).behavior, 'soothed');
+  assert.equal(ignores.at(-1), true, 'release outside the egg returns the window to click-through');
+  console.log('PASS: held diagonal reversal released beyond egg shape reaches the Brain');
+  await win.webContents.executeJavaScript(`(async () => {
+    if ((await window.petBrain.read()).behavior === 'idle') return;
+    await new Promise(resolve => {
+      const stop = window.petBrain.subscribe(state => {
+        if (state.behavior === 'idle') { stop(); resolve(undefined); }
+      });
+    });
+  })()`);
+
   // Synthetic displays test DIP arithmetic, not native multi-monitor behavior.
   const originalNearest = screen.getDisplayNearestPoint.bind(screen);
   const originalMatching = screen.getDisplayMatching.bind(screen);

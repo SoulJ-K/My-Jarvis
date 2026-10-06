@@ -111,10 +111,10 @@ async function exerciseCare(win: BrowserWindow) {
 
     await hold();
     cursor.x = 610; await input('mouseMove', 170);
-    cursor.x = 500; await input('mouseMove');
-    await input('mouseUp');
+    await input('mouseUp', 170);
     assert.equal(count(), 2);
     assert.deepEqual(win.getPosition(), origin);
+    cursor.x = 500;
 
     // Reload while pressed must discard the gesture and its armed cue.
     await input('mouseDown');
