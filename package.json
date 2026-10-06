@@ -11,7 +11,8 @@
     "test": "npm run build && node scripts/test.mjs",
     "package:mac": "npm run build && node scripts/package-mac.mjs",
     "test:mac-package": "npm run build && node scripts/test-mac-package.mjs",
-    "test:notifications": "npm run build && electron dist/tests/notifications-checks.js"
+    "test:notifications": "npm run build && electron dist/tests/notifications-checks.js",
+    "test:ci": "npm run build && node scripts/test-ci.mjs"
   },
   "license": "UNLICENSED",
   "devDependencies": {
