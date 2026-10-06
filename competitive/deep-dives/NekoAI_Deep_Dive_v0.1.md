@@ -143,7 +143,7 @@ Jarvis Pet의 현재 PRD·결정 기록과 비교하면, **움직이는 데스�
 - [S9] [v0.3.8 설정 경로·SQLite 저장 코드](https://github.com/nucket/NekoAI/blob/v0.3.8/src-tauri/src/storage.rs)
 - [S10] [v0.3.8 AIProvider 연결 규약](https://github.com/nucket/NekoAI/blob/v0.3.8/src/ai/types.ts), [펫 제작 안내](https://github.com/nucket/NekoAI/blob/main/docs/creating-a-pet.md)
 - [S11] [NekoAI 변경 기록 — 운영체제별 수정 사항](https://github.com/nucket/NekoAI/blob/main/CHANGELOG.md)
-- [J1] 내부 비교 기준: `Jarvis_Pet_PRD_v0.1.md` (2026-09-25, 로컬 문서)
-- [J2] 내부 비교 기준: `Jarvis_Pet_Decision_Log_v0.1.md` (2026-09-25, 로컬 문서)
+- [J1] 내부 비교 기준: `Jarvis_Pet_PRD.md` (2026-09-25, 로컬 문서)
+- [J2] 내부 비교 기준: `Jarvis_Pet_Decision_Log.md` (2026-09-25, 로컬 문서)
 
 > 출처 확인 방식: 외부 링크는 2026-09-25에 공개 페이지를 조회했다. S4~S10은 변경 가능한 `main`이 아니라 `v0.3.8` 태그를 기준으로 했다. 제품 평가는 공개 자료와 일부 핵심 코드에 기반하며, 앱을 설치해 직접 사용한 평가는 포함하지 않는다.

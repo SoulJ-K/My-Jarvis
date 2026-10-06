@@ -36,7 +36,7 @@ v0.1의 목표는 **알 → 부화 → 아기와 며칠 생활하기**, 그리�
 
 **아직 확인할 것:** 앱이 꺼진 동안 만료된 예약의 복원, 리마인더의 실제 전달, 물리적 절전·잠금 후 동작, 자연스러운 부화 대기와 며칠간의 아기 생활, 다양한 화면 환경·Windows·정식 배포용 앱입니다. 앱이 완전히 종료되거나 Mac이 잠들어 있는 동안 정시 알림은 보장하지 않습니다.
 
-다음 우선 과제는 이 남은 실사용 검증입니다. [실기기 검증 계획](docs/Jarvis_Pet_Technical_Design_v0.1.md#mac-validation-plan)에서 검사 순서와 판단 기준을 볼 수 있습니다.
+다음 우선 과제는 이 남은 실사용 검증입니다. [실기기 검증 계획](docs/Jarvis_Pet_Technical_Design.md#mac-validation-plan)에서 검사 순서와 판단 기준을 볼 수 있습니다.
 
 ## 개발 환경에서 실행하기
 
@@ -47,7 +47,7 @@ npm ci
 npm start
 ```
 
-`npm start`는 앱의 기본 저장 위치를 사용하는 개발 실행입니다. 매번 새 임시 펫으로 시작하는 체험 명령은 아닙니다. 실제 펫과 분리한 체험 경로는 [체험·촬영 준비안](docs/Jarvis_Pet_Technical_Design_v0.1.md#preview-plan)을 참고해 주세요.
+`npm start`는 앱의 기본 저장 위치를 사용하는 개발 실행입니다. 매번 새 임시 펫으로 시작하는 체험 명령은 아닙니다. 실제 펫과 분리한 체험 경로는 [체험·촬영 준비안](docs/Jarvis_Pet_Technical_Design.md#preview-plan)을 참고해 주세요.
 
 검사 명령:
 
@@ -64,7 +64,7 @@ npm test
 
 이 HTML은 분위기와 부화 순서를 살펴보는 **독립 시안**입니다. 실제 앱의 저장 데이터나 부화 진행 상태와 연결되지 않습니다.
 
-실제 앱 화면 캡처·짧은 GIF는 아직 이 README에 제공하지 않습니다. [자료 구성 초안](docs/Jarvis_Pet_Technical_Design_v0.1.md#preview-plan)을 확인한 뒤 제작·검수한 자료만 추가할 예정입니다.
+실제 앱 화면 캡처·짧은 GIF는 아직 이 README에 제공하지 않습니다. [자료 구성 초안](docs/Jarvis_Pet_Technical_Design.md#preview-plan)을 확인한 뒤 제작·검수한 자료만 추가할 예정입니다.
 
 ## 설계 원칙
 
@@ -76,9 +76,9 @@ npm test
 
 ## 더 자세한 문서
 
-- [PRD v0.1](docs/Jarvis_Pet_PRD_v0.1.md): 제품 방향, v0.1 범위와 완료 기준
-- [캐릭터·성장 설계](docs/Jarvis_Pet_Character_and_Growth_Design_v0.1.md): 탄생, 돌봄, 감정과 관계
-- [결정 기록](docs/Jarvis_Pet_Decision_Log_v0.1.md): 무엇을 왜 선택했는지, 고려한 대안과 결정 변경 이력
-- [기술 설계](docs/Jarvis_Pet_Technical_Design_v0.1.md): 어떻게 구현할지, 앱 구조와 검증 계획
+- [PRD](docs/Jarvis_Pet_PRD.md): 제품 방향, v0.1 범위와 완료 기준
+- [캐릭터·성장 설계](docs/Jarvis_Pet_Character_and_Growth_Design.md): 탄생, 돌봄, 감정과 관계
+- [결정 기록](docs/Jarvis_Pet_Decision_Log.md): 무엇을 왜 선택했는지, 고려한 대안과 결정 변경 이력
+- [기술 설계](docs/Jarvis_Pet_Technical_Design.md): 어떻게 구현할지, 앱 구조와 검증 계획
 - [개발 기록](docs/Jarvis_Pet_Development_Log.md): 날짜별 실제 구현·통합·검사, 발견한 문제와 아직 확인하지 못한 항목
-- [이전 README 원문](README_archive_2026-10-01.md): 작업별 검증과 개발 기록을 포함한 보관본
+- [이전 README 원문](https://github.com/SoulJ-K/My-Jarvis/blob/c0a8cfc35d3a555732db23d24b208938270c64a7/README_archive_2026-10-01.md): 작업별 검증과 개발 기록을 포함한 보관본
