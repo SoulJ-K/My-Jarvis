@@ -26,8 +26,13 @@ app.whenReady().then(async () => {
   const register = ipcMain.handle.bind(ipcMain);
   let submitHandler!: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
   let submitEvent!: IpcMainInvokeEvent;
+  let closeRequests = 0;
   ipcMain.handle = (channel, listener) => {
     if (channel === 'timer:submit') { submitHandler = listener; register(channel,(event,...args) => { submitEvent = event; return listener(event,...args); }); }
+    else if (channel === 'prompt:close') register(channel, (event, ...args) => {
+      closeRequests++;
+      return listener(event, ...args);
+    });
     else register(channel,listener);
   };
   const schedules = new ReminderService(new ScheduleRepository(directory), () => now, undefined, () => panels?.refresh());
@@ -60,9 +65,29 @@ app.whenReady().then(async () => {
   assert.equal(await foreign.webContents.executeJavaScript(`window.timerPanel.submit('foreign','5분 타이머').then(()=>false,()=>true)`),true);
   assert.equal(await panels.notice.webContents.executeJavaScript(`window.timerPanel.cancel('bad').then(()=>false,()=>true)`),true);
   foreign.destroy();
-  await run(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
-  await run('window.timerPanel.read()');
-  assert.equal(panels.prompt.isVisible(),false);
+  assert.equal(panels.prompt.isVisible(), true, 'Escape starts with an open input window');
+  const closesBeforeEscape = closeRequests;
+  const escapeStarted = performance.now();
+  // Observe the actual close path, not completion of an unrelated timer read.
+  // Keep this below the 8-second automatic close; never close the window for it.
+  const escapeState = await run(`(() => {
+    const before = {
+      busy: document.querySelector('#timer-form').getAttribute('aria-busy'),
+      inputDisabled: document.querySelector('#request').disabled
+    };
+    const event = new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true});
+    document.dispatchEvent(event);
+    return {...before, handled: event.defaultPrevented};
+  })()`);
+  while (panels.prompt.isVisible() && performance.now() - escapeStarted < 1000) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  const escapeResult = {
+    ...escapeState, closeRequests: closeRequests - closesBeforeEscape,
+    visible: panels.prompt.isVisible(), elapsedMs: Math.round(performance.now() - escapeStarted),
+  };
+  assert.ok(escapeResult.handled && escapeResult.closeRequests === 1 && !escapeResult.visible,
+    `Escape must request and complete input hiding within 1000ms: ${JSON.stringify(escapeResult)}`);
   assert.equal(service.views()[0].status,'pending');
   // A separate ordinary window represents keyboard work. Timer output must not focus a panel.
   const typing = new BrowserWindow({width:300,height:150,show:true});
