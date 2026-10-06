@@ -82,7 +82,7 @@
 
 ## 15) Jarvis Pet과 겹치는 부분
 
-**확인·비교:** Jarvis Pet 구상의 대화형 데스크톱 캐릭터, 로컬 장기 기억, 여러 모델 연결 가능성, 알람·리마인더, 파일·앱·명령 실행, 진행 중인 업무 표시와 겹칩니다. 특히 “일을 하는 펫”과 “로컬 모델도 가능한 펫”은 이미 존재하는 조합입니다. 다만 Jarvis Pet의 계획은 내부 [PRD](../../docs/Jarvis_Pet_PRD_v0.1.md)를 기준으로 비교한 것이며, 현재 구현 완료를 뜻하지 않습니다. [desktop-pet README](https://github.com/valerieliang/desktop-pet)
+**확인·비교:** Jarvis Pet 구상의 대화형 데스크톱 캐릭터, 로컬 장기 기억, 여러 모델 연결 가능성, 알람·리마인더, 파일·앱·명령 실행, 진행 중인 업무 표시와 겹칩니다. 특히 “일을 하는 펫”과 “로컬 모델도 가능한 펫”은 이미 존재하는 조합입니다. 다만 Jarvis Pet의 계획은 내부 [PRD](../../docs/Jarvis_Pet_PRD.md)를 기준으로 비교한 것이며, 현재 구현 완료를 뜻하지 않습니다. [desktop-pet README](https://github.com/valerieliang/desktop-pet)
 
 ## 16) Jarvis Pet이 참고할 부분
 

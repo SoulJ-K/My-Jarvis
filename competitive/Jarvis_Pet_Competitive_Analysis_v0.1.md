@@ -2,7 +2,7 @@
 
 > 상태: 제품 관점 1차 분석 · 2026-09-25 기준  
 > 비교 대상: [NekoAI](https://github.com/nucket/NekoAI), [Miru](https://github.com/kiyotakali/Miru), [Pet Mochi](https://github.com/cskwork/pet-mochi), [desktop-pet](https://github.com/valerieliang/desktop-pet)  
-> 내부 기준: `Jarvis_Pet_PRD_v0.1.md`  
+> 내부 기준: `Jarvis_Pet_PRD.md`<br>
 > 범위: 각 프로젝트의 공개 README와 제품 설명. 설치 후 사용성, 코드의 실제 동작, 보안 수준, 이용자 반응은 검증하지 않았다.
 
 ## 1. 이 문서의 읽는 법

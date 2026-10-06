@@ -2,7 +2,7 @@
 
 - **문서 목적:** NekoAI, Miru, Pet Mochi, desktop-pet을 동일한 축에서 직접 비교하고 Jarvis Pet의 차별화 가설과 후속 검증 순서를 정한다. 네 심층 분석의 세부 내용을 반복하기보다 서로의 기준선과 빈자리를 종합한다.
 - **조사일:** 2026-09-25 (Asia/Seoul). 이 문서는 같은 날 작성된 네 심층 분석을 종합했다.
-- **Jarvis Pet 기준:** [PRD v0.1](../docs/Jarvis_Pet_PRD_v0.1.md), [결정 기록 v0.1](../docs/Jarvis_Pet_Decision_Log_v0.1.md). Jarvis Pet의 멀티 AI 조율과 폭넓은 업무 수행은 **장기 구상**이며 현재 구현 사실이 아니다. 첫 버전은 AI 제공자 하나와 작은 범위의 기능을 목표로 한다.
+- **Jarvis Pet 기준:** [PRD](../docs/Jarvis_Pet_PRD.md), [결정 기록](../docs/Jarvis_Pet_Decision_Log.md). Jarvis Pet의 멀티 AI 조율과 폭넓은 업무 수행은 **장기 구상**이며 현재 구현 사실이 아니다. 첫 버전은 AI 제공자 하나와 작은 범위의 기능을 목표로 한다.
 - **증거 범위:** 각 심층 분석은 공식 자료와 공개 코드 일부를 검토했으나 네 앱 모두 동일 조건으로 설치·장기 사용한 비교 시험은 아니다. NekoAI는 v0.3.8 코드, Miru는 `7d57a325` 커밋, Pet Mochi는 공개 `main`의 문서·일부 코드, desktop-pet은 공개 `main`의 README·기본 설정을 주로 기준으로 한다. `확인`은 해당 자료에서 확인했다는 뜻이며 실사용 품질의 입증은 아니다. `미확인`은 기능이 없다는 뜻이 아니다. [N1][M1][P1][D1]
 
 ## 1. 결론부터: 네 제품이 이미 만든 기준선
@@ -206,5 +206,5 @@ desktop-pet 때문에 **‘일하는 펫’ 자체는 차별점이 아니다.** 
 - **[D3]** [desktop-pet README의 기억](https://github.com/valerieliang/desktop-pet#memory), [백엔드 선택](https://github.com/valerieliang/desktop-pet#choosing-a-backend), [기본 설정](https://github.com/valerieliang/desktop-pet/blob/main/config.yaml).
 - **[D4]** [desktop-pet README의 알람](https://github.com/valerieliang/desktop-pet#alarms-timers-and-reminders), [병렬·장기 작업](https://github.com/valerieliang/desktop-pet#running-several-things-at-once).
 - **[D5]** [desktop-pet 심층 분석의 추가 코드 검토 항목](./deep-dives/Desktop_Pet_Deep_Dive_v0.1.md#19-추가-코드-분석이-필요한-지점).
-- **[J1]** [Jarvis Pet PRD v0.1](../docs/Jarvis_Pet_PRD_v0.1.md) — 구현 범위와 장기 비전의 구분.
-- **[J2]** [Jarvis Pet 결정 기록 v0.1](../docs/Jarvis_Pet_Decision_Log_v0.1.md) — AI 없는 펫, 로컬 기억, 제공자 하나부터 시작, 성장·차별화 가설.
+- **[J1]** [Jarvis Pet PRD](../docs/Jarvis_Pet_PRD.md) — 구현 범위와 장기 비전의 구분.
+- **[J2]** [Jarvis Pet 결정 기록](../docs/Jarvis_Pet_Decision_Log.md) — AI 없는 펫, 로컬 기억, 제공자 하나부터 시작, 성장·차별화 가설.

@@ -4,7 +4,7 @@
 - **대상:** [cskwork/pet-mochi](https://github.com/cskwork/pet-mochi) 및 [공식 소개 페이지](https://cskwork.github.io/pet-mochi/). 이름이 비슷한 다른 Mochi 프로젝트는 분석 대상이 아니다.
 - **조사 범위:** 공개 README, 제품 소개, PRD, 일부 공개 소스 확인. 앱을 설치해 장시간 사용하거나 성능·안전성을 독립 시험하지 않았다.
 - **표기:** **확인**은 공개 문서·코드에 직접 근거가 있는 내용, **추정/평가**는 그 근거에서 도출한 제품 판단, **미확인**은 공개 자료만으로 단정할 수 없는 내용이다. README의 ‘구현됨’ 주장은 실제 사용자 환경에서의 동작 검증과 구별한다.
-- **Jarvis Pet 기준:** 로컬 [Jarvis Pet PRD v0.1](../../docs/Jarvis_Pet_PRD_v0.1.md)의 구상. 아직 구현된 기능이라는 뜻은 아니다.
+- **Jarvis Pet 기준:** 로컬 [Jarvis Pet PRD](../../docs/Jarvis_Pet_PRD.md)의 구상. 아직 구현된 기능이라는 뜻은 아니다.
 
 ## 1) 제품 한 줄 정의
 
@@ -95,7 +95,7 @@
 
 ## 15) Jarvis Pet과 겹치는 부분
 
-**확인:** 양쪽 구상 모두 데스크톱 상주 펫, AI 없이 동작하는 기본 행동, 감정·관계, 장기 기억, 선택적 AI 연결, 장차 도구를 통한 행동을 포함한다. Pet Mochi의 현재 구현은 특히 로컬 행동 루프, 감정 표출, 기억 관리, 제한된 파일 읽기에서 Jarvis Pet 초기 구상과 직접 겹친다. [Pet Mochi PRD](https://github.com/cskwork/pet-mochi/blob/main/PRD.md), [Jarvis Pet PRD v0.1](../../docs/Jarvis_Pet_PRD_v0.1.md)
+**확인:** 양쪽 구상 모두 데스크톱 상주 펫, AI 없이 동작하는 기본 행동, 감정·관계, 장기 기억, 선택적 AI 연결, 장차 도구를 통한 행동을 포함한다. Pet Mochi의 현재 구현은 특히 로컬 행동 루프, 감정 표출, 기억 관리, 제한된 파일 읽기에서 Jarvis Pet 초기 구상과 직접 겹친다. [Pet Mochi PRD](https://github.com/cskwork/pet-mochi/blob/main/PRD.md), [Jarvis Pet PRD](../../docs/Jarvis_Pet_PRD.md)
 
 **평가:** 따라서 ‘AI가 없어도 움직이는 감정 펫’, ‘로컬 기억’, ‘AI 공급자 교체 인터페이스’만을 Jarvis Pet의 독자적 차별화로 주장하기는 어렵다.
 
@@ -104,7 +104,7 @@
 1. **로컬 우선 동작 계약:** 네트워크·모델·데이터베이스 실패 때도 먹이·놀이·수면·기본 반응이 끊기지 않도록 핵심 상태 루프를 분리한다. Pet Mochi의 규칙 적용 → 감정 도출 → 움직임 선택 → 필요할 때 AI 호출 구조가 참고 사례다. [tick.ts](https://github.com/cskwork/pet-mochi/blob/main/src/lib/sim/tick.ts), [README 설계 선택](https://github.com/cskwork/pet-mochi#design-choices-worth-knowing)
 2. **권한이 보이는 파일 흐름:** 파일별 동의, 전용 수신함, 좁은 쓰기 대상처럼 펫의 행동 범위를 사용자에게 설명 가능한 단위로 둔다. [README 샌드박스](https://github.com/cskwork/pet-mochi#sandbox)
 3. **드문 AI 호출:** 사건 중요도·대기 제한·무음 대체 동작을 합쳐 비용과 알림 피로를 제한한다. [salience.ts](https://github.com/cskwork/pet-mochi/blob/main/src/lib/sim/salience.ts)
-4. **기억의 소유권:** 기억을 특정 AI 서비스에 묶지 않고 사용자가 보고 지울 수 있게 한다. Jarvis PRD의 ‘AI Provider가 바뀌어도 기억 유지’ 원칙과 일치한다. [db.rs](https://github.com/cskwork/pet-mochi/blob/main/src-tauri/src/db.rs), [Jarvis Pet PRD v0.1](../../docs/Jarvis_Pet_PRD_v0.1.md)
+4. **기억의 소유권:** 기억을 특정 AI 서비스에 묶지 않고 사용자가 보고 지울 수 있게 한다. Jarvis PRD의 ‘AI Provider가 바뀌어도 기억 유지’ 원칙과 일치한다. [db.rs](https://github.com/cskwork/pet-mochi/blob/main/src-tauri/src/db.rs), [Jarvis Pet PRD](../../docs/Jarvis_Pet_PRD.md)
 
 ## 17) Jarvis Pet이 피하거나 다르게 가져갈 부분
 
@@ -126,7 +126,7 @@ Jarvis Pet의 차별화는 아래의 **사용자에게 보이는 변화**로 검
 | 자율성은 어떻게 통제하나? | 사건 문턱·대기 제한·파일별 동의 | 업무별 권한·승인·취소·실행 기록과 실패 복구가 성장과 함께 작동 |
 | 펫으로서의 매력은 유지되나? | 로컬 시뮬레이션이 중심 | 비서 상태와 펫의 몸짓이 연결되어 AI가 없어도 살아 있고, 일을 할 때는 더 유능해 보임 |
 
-**반증 가능성:** 여러 AI를 붙여도 사용자 과제를 더 빠르고 믿을 만하게 끝내지 못하거나, 권한 단계가 복잡함만 늘리면 차별화 가설은 약해진다. 반대로 한 공급자와 소수 도구만으로도 ‘성장 후 실제로 맡길 수 있는 일이 늘었다’는 경험을 재현하면 가설의 핵심을 조기에 검증할 수 있다. [Jarvis Pet PRD v0.1](../../docs/Jarvis_Pet_PRD_v0.1.md)
+**반증 가능성:** 여러 AI를 붙여도 사용자 과제를 더 빠르고 믿을 만하게 끝내지 못하거나, 권한 단계가 복잡함만 늘리면 차별화 가설은 약해진다. 반대로 한 공급자와 소수 도구만으로도 ‘성장 후 실제로 맡길 수 있는 일이 늘었다’는 경험을 재현하면 가설의 핵심을 조기에 검증할 수 있다. [Jarvis Pet PRD](../../docs/Jarvis_Pet_PRD.md)
 
 ## 19) 추가 코드 분석이 필요한 지점
 
