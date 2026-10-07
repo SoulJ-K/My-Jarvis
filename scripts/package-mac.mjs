@@ -49,6 +49,10 @@ export function packageMac({ validation = false, existingDataDirectory } = {}) {
     mkdirSync(path.dirname(destination), { recursive: true });
     cpSync(path.join(root, 'dist/src', relative), destination);
   }
+  const nativeHelper = path.join(root, 'dist/native/jarvis-dock-snack.node');
+  if (!existsSync(nativeHelper)) throw new Error('DOCK_HELPER_BUILD_REQUIRED');
+  mkdirSync(path.join(payload, 'dist/native'), { recursive: true });
+  cpSync(nativeHelper, path.join(payload, 'dist/native/jarvis-dock-snack.node'));
   writeFileSync(path.join(payload, 'package.json'), JSON.stringify({
     name: pkg.name, version: pkg.version, private: true, main: 'launch.cjs',
   }, null, 2) + '\n');

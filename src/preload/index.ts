@@ -3,6 +3,11 @@ import type { EggSnapshot } from '../shared/pet-state';
 
 // Only a read-only pet snapshot and gestures; no filesystem, SQL, shell, or general IPC.
 contextBridge.exposeInMainWorld('petWindow', {
+  onNativeDragReset: (listener: () => void) => {
+    const receive = () => listener();
+    ipcRenderer.on('pet:native-drag-reset', receive);
+    return () => ipcRenderer.removeListener('pet:native-drag-reset', receive);
+  },
   snapshot: () => ipcRenderer.invoke('egg:snapshot'),
   hover: (interactive: boolean) => ipcRenderer.send('egg:hover', interactive),
   beginDrag: () => ipcRenderer.send('egg:drag-start'),
@@ -31,6 +36,7 @@ contextBridge.exposeInMainWorld('petBrain', {
 });
 
 contextBridge.exposeInMainWorld('babyLife', {
+  setReducedMotion: (enabled: boolean) => ipcRenderer.send('baby:reduced-motion', enabled),
   read: () => ipcRenderer.invoke('baby:read'),
   onDirection: (listener: (direction: 'left' | 'right') => void) => {
     const receive = (_event: Electron.IpcRendererEvent, direction: 'left' | 'right') => listener(direction);

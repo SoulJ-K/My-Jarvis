@@ -73,13 +73,13 @@ export class ScheduleRepository {
     return this.db.prepare("UPDATE schedules SET status='due', reason=? WHERE id=? AND status='pending'").run(reason, id).changes === 1;
   }
   cancel(id: string): boolean {
-    return this.db.prepare("UPDATE schedules SET status='cancelled' WHERE id=? AND status='pending'").run(id).changes === 1;
+    return this.db.prepare("UPDATE schedules SET status='cancelled' WHERE id=? AND status!='cancelled'").run(id).changes === 1;
   }
   acknowledge(id: string): void {
     this.db.prepare("UPDATE schedules SET status='acknowledged' WHERE id=? AND status='due'").run(id);
   }
   delivery(id: string, state: SystemDelivery): void {
-    this.db.prepare("UPDATE schedules SET system_delivery=? WHERE id=? AND status IN ('due','acknowledged')").run(state, id);
+    this.db.prepare("UPDATE schedules SET system_delivery=? WHERE id=? AND reason IS NOT NULL AND status IN ('due','acknowledged','cancelled')").run(state, id);
   }
   displayed(id: string): void {
     this.db.prepare("UPDATE schedules SET app_displayed=1 WHERE id=? AND status='due'").run(id);

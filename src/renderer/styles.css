@@ -59,7 +59,7 @@ html[data-stage=baby] #egg:not([data-life]) { visibility: hidden; }
 #egg.baby-idle .shell { background: #bed8ce; border: 3px solid #527c71; box-shadow: none; }
 #egg.baby-idle .shell { margin-top: 18.4px; }
 #egg.baby-idle .shell::before { content: ''; position: absolute; width: 6px; height: 9px; border-radius: 50%; background: #283448; top: 25px; left: 28px; box-shadow: 24px 0 #283448; }
-#egg.baby-idle .shell::after { content: ''; position: absolute; left: 44px; top: 43px; width: 12px; height: 3px; border-radius: 50%; background: #283448; }
+#egg.baby-idle .shell::after { content: none; }
 #pet-name { position: absolute; bottom: 0; left: 4px; right: 4px; margin: 0; color: #283448; background: #f6f4ed; border-radius: 8px; text-align: center; font: 14px/1.5 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #pet-name:empty { display: none; }
 @media (prefers-reduced-motion: reduce) {
@@ -77,17 +77,17 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 #egg[data-life=sleeping] .shell { transform: scale(1.06, .85); transform-origin: bottom; }
 #egg[data-life=sleeping] .shell::before { height: 3px; top: 31px; border-radius: 0; }
 #egg[data-life=drowsy] .shell { animation: baby-nod 3s ease-in-out infinite; }
-#egg[data-life=eating] .shell::after { animation: baby-chew .55s ease-in-out infinite alternate; }
+#egg[data-life=eating] .shell { animation: baby-chew .55s ease-in-out infinite alternate; }
 #sleep-symbol { position: absolute; left: 93px; top: 13px; color: #527c71; font: 700 14px/1 system-ui, sans-serif; pointer-events: none; user-select: none; animation: sleep-glow 2.6s ease-in-out infinite alternate; }
 #sleep-symbol[hidden] { display: none; }
 #save-status { bottom: 24px; z-index: 3; pointer-events: none; }
 @keyframes baby-nod { 50% { transform: scaleY(.95) rotate(2deg); } }
 @keyframes sleep-glow { to { opacity: .55; } }
-@keyframes baby-chew { to { height: 13px; border-radius: 50% 50% 55% 55%; } }
+@keyframes baby-chew { to { transform: scale(1.025, .97); } }
 @media (prefers-reduced-motion: reduce) {
   #egg.baby-idle, html[data-stage=baby] .shadow, #food span { transition: none; }
   #sleep-symbol, #egg[data-life] .shell, #egg[data-life=eating] .shell::after { animation: none; }
-  #egg[data-life=eating] .shell::after { height: 9px; }
+
 }
 
 /* Temporary shape-only expression; body needs retain their own rendering. */
@@ -114,3 +114,34 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 #egg #pet-name { bottom: auto; top: min(100px, calc(279px - var(--body-y, 152px))); left: 50%; right: auto; transform: translateX(-50%); width: max-content; max-width: 120px; padding: 0 8px; pointer-events: none; }
 #egg #emotion-orb { left: 40px; top: max(-32px, calc(4px - var(--body-y, 152px))); }
 #egg #emotion-orb[data-play=true] { left: 90px; top: 74px; }
+
+/* v0.2: body urgency and orb refusal carry independent meanings. */
+#egg.baby-idle .shell { scale: var(--attention-scale, 1); transform-origin: center bottom;
+  transition: scale .25s ease, background-color .25s ease, border-color .25s ease; }
+#egg.baby-idle[data-attention="1"] .shell { background-color: #deb9b0; border-color: #966c68; }
+#egg.baby-idle[data-attention="2"] .shell { background-color: #db9290; border-color: #925457; }
+#egg.baby-idle[data-attention-act=bottom] .shell { animation: attention-hop .8s ease-in-out infinite; }
+#egg.baby-idle[data-attention-act=cursor] .shell::before { translate: -3px 0; }
+#egg.baby-idle[data-attention-act]:not([data-attention-act=""]) { transition: none; }
+#emotion-orb[data-expression=refusal] { background: #da6d69; border-color: #873c40; }
+#emotion-orb[data-expression=refusal]::after { content: ''; position: absolute; left: 4px; right: 4px; top: 8px; height: 2px; background: #fff2e8; }
+#emotion-orb[data-expression=curiosity] { background: #bbdce7; }
+#emotion-orb[data-expression=discomfort] { background: #e8b078; }
+#egg #emotion-orb { left: clamp(calc(4px - var(--body-x, 36px)), 40px, calc(394px - var(--body-x, 36px)));
+  top: clamp(calc(4px - var(--body-y, 152px)), -32px, calc(274px - var(--body-y, 152px))); }
+#egg #emotion-orb[data-play=true] { left: clamp(calc(28px - var(--body-x, 36px)), 90px, calc(394px - var(--body-x, 36px)));
+  top: clamp(calc(4px - var(--body-y, 152px)), 74px, calc(274px - var(--body-y, 152px))); }
+#egg #pet-name { left: clamp(calc(64px - var(--body-x, 36px)), 52px, calc(356px - var(--body-x, 36px)));
+  top: clamp(calc(4px - var(--body-y, 152px)), 100px, calc(274px - var(--body-y, 152px))); }
+#sleep-symbol { left: clamp(calc(4px - var(--body-x, 36px)), 93px, calc(394px - var(--body-x, 36px))); top: max(0px, calc(4px - var(--body-y, 152px))); }
+@keyframes attention-hop { 50% { transform: translateY(-14px); } }
+@media (prefers-reduced-motion: reduce) {
+  #egg.baby-idle .shell, #egg.baby-idle[data-attention-act] .shell { animation: none; transition: none; }
+}
+
+#egg.baby-idle[data-meal-deferred=true] .shell { animation: meal-deferred .55s ease-in-out 2; }
+@keyframes meal-deferred { 25% { rotate: -5deg; } 75% { rotate: 5deg; } }
+@media (prefers-reduced-motion: reduce) { #egg.baby-idle[data-meal-deferred=true] .shell { animation: none; } }
+
+#egg.baby-idle[data-dragging=true], #egg.baby-idle.pressed { transition: none; }
+#egg.baby-idle[data-attention-act=cursor][data-direction=right] .shell::before { translate: 3px 0; }

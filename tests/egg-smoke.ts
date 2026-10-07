@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
   assert.deepEqual(await win.webContents.executeJavaScript('window.petWindow.snapshot()'), pet);
   assert.equal(await win.webContents.executeJavaScript('document.querySelector("#egg").dataset.petId'), pet.petId);
   assert.deepEqual(await win.webContents.executeJavaScript('Object.keys(window.petWindow).sort()'),
-    ['beginDrag', 'cancelDrag', 'endDrag', 'hover', 'moveDrag', 'onSaveFailed', 'onStrokeReady', 'snapshot']);
+    ['beginDrag', 'cancelDrag', 'endDrag', 'hover', 'moveDrag', 'onNativeDragReset', 'onSaveFailed', 'onStrokeReady', 'snapshot']);
   assert.throws(() => snapshotHandler(snapshotEvent, { sql: 'DELETE FROM pet' }), /EGG_REQUEST_DENIED/);
   console.log('PASS: 실제 저장된 알·반복 조회·잘못된 조회 인자 거절·제한된 연결');
 

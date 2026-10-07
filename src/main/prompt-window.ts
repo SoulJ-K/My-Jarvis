@@ -1,3 +1,5 @@
+import { panelAction, menuMode, requestId } from '../assistant/panel-input';
+import type { AssistantPanelAPI } from '../shared/assistant-panel';
 import { parseBabyInput, type SocialCommand } from '../pet/baby-social';
 import { BrowserWindow, ipcMain, screen, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
@@ -6,7 +8,9 @@ import type { TimerService } from '../assistant/timer';
 import type { ReminderService } from '../assistant/reminders';
 
 /** Separate focusable input; the pet window stays non-activating. */
-export async function createPromptWindows(service: TimerService, showNotices = true, schedules?: ReminderService, interact?: (command: SocialCommand) => string | null) {
+export async function createPromptWindows(service: TimerService, showNotices = true, schedules?: ReminderService, interact?: (command: SocialCommand) => string | null, assistant?: {
+    api: Omit<AssistantPanelAPI, 'subscribe'>; card: BrowserWindow; cardPage: string;
+  }) {
   const page = path.join(__dirname, '../renderer/prompt.html');
   const noticePage = path.join(__dirname, '../renderer/timer-notice.html');
   const preferences = { preload: path.join(__dirname, '../preload/prompt.js'),
@@ -48,9 +52,6 @@ export async function createPromptWindows(service: TimerService, showNotices = t
       return { ok: message !== null, message: message ?? '아기가 된 뒤에 이야기할 수 있어요.', timers: service.views() };
     }
     const reply = service.submit(requestId, input);
-    if (!reply.ok && command === null && !/^5\s*분\s*타이머$/.test(String(input).trim())) {
-      reply.message = '“5분 타이머”, “안녕”, “잘했어”, “구슬 놀이”, “그만”을 입력해 주세요. 다른 문장은 실행하지 않았습니다.';
-    }
     return reply;
   });
   handle('timer:cancel', false, 1, (value: unknown) => service.cancel(id(value)));
@@ -79,6 +80,30 @@ export async function createPromptWindows(service: TimerService, showNotices = t
     const owner = event.sender === prompt.webContents ? prompt : notice;
     if (owner.isVisible() && !owner.isMinimized()) scheduleService().displayed(value);
   });
+  if (assistant) {
+    const accept = (event: IpcMainInvokeEvent) => valid(event) ||
+      (!assistant.card.isDestroyed() && event.sender === assistant.card.webContents &&
+        event.senderFrame === assistant.card.webContents.mainFrame && event.senderFrame?.url === pathToFileURL(assistant.cardPage).href);
+    handlers.push('assistant:read', 'assistant:action', 'assistant:submit-timer', 'assistant:snack');
+    ipcMain.handle('assistant:read', (event, ...args: unknown[]) => {
+      if (!accept(event) || args.length) throw new Error('PANEL_REQUEST_DENIED');
+      return assistant.api.read();
+    });
+    ipcMain.handle('assistant:action', (event, ...args: unknown[]) => {
+      if (!accept(event) || args.length !== 1) throw new Error('PANEL_REQUEST_DENIED');
+      const action = panelAction(args[0]);
+      if (!valid(event) && !['done', 'later', 'undo', 'cancel'].includes(action.type)) throw new Error('PANEL_REQUEST_DENIED');
+      return assistant.api.action(action);
+    });
+    ipcMain.handle('assistant:submit-timer', (event, ...args: unknown[]) => {
+      if (!valid(event) || args.length !== 4 || typeof args[1] !== 'string' || args[1].length > 500 || typeof args[3] !== 'boolean') throw new Error('PANEL_REQUEST_DENIED');
+      return assistant.api.submitTimer(requestId(args[0]), args[1], menuMode(args[2]), args[3]);
+    });
+    ipcMain.handle('assistant:snack', (event, ...args: unknown[]) => {
+      if (!valid(event) || args.length) throw new Error('PANEL_REQUEST_DENIED');
+      return assistant.api.snack();
+    });
+  }
   const closeInput = () => {
     schedules?.discard();
     if (prompt.isFocused()) prompt.blur();
@@ -108,17 +133,8 @@ export async function createPromptWindows(service: TimerService, showNotices = t
     try { scheduleRows = schedules?.views() ?? []; } catch { /* Preserve timer delivery. */ }
     for (const win of [prompt, notice]) if (!win.isDestroyed()) win.webContents.send('timer:changed');
     for (const win of [prompt, notice]) if (!win.isDestroyed()) win.webContents.send('schedule:changed');
-    const fresh = [...rows.map(row => ({ ...row, id: `timer:${row.id}` })),
-      ...scheduleRows.map(row => ({ ...row, id: `schedule:${row.id}` }))]
-      .filter(row => row.status === 'due' && !announced.has(row.id));
-    if (fresh.length && showNotices) {
-      fresh.forEach(row => announced.add(row.id));
-      const area = screen.getPrimaryDisplay().workArea;
-      notice.setPosition(area.x + Math.max(0, area.width - 360), area.y + 32);
-      notice.showInactive(); // Never raise or focus the input panel automatically.
-      clearTimeout(hideNotice);
-      hideNotice = setTimeout(() => notice.hide(), 8000);
-    }
+    // Initial native alerts never open a duplicate app popup. Baby follow-up is separate.
+    prompt.webContents.send('assistant:changed');
   };
   return {
     prompt, notice, refresh,

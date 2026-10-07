@@ -96,20 +96,26 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     await until(() => pet('document.querySelector("#emotion-orb").dataset.play === "true"'));
     await capture('orb');
     assert.equal((await submit('그만')).ok, true);
-    await until(() => pet('document.querySelector("#emotion-orb").hidden'));
+    await until(() => pet('document.querySelector("#emotion-orb").dataset.play === "false"'));
+    assert.equal(await pet('document.querySelector("#emotion-orb").hidden'), false, 'stopped play keeps the orb visible');
     now += T.playGap;
     await submit('구슬 놀이');
     powerMonitor.emit('lock-screen');
-    await until(() => pet('document.querySelector("#emotion-orb").hidden'));
+    await until(() => pet('document.querySelector("#emotion-orb").dataset.play === "false"'));
+    assert.equal(await pet('document.querySelector("#emotion-orb").hidden'), false, 'stopped play keeps the orb visible');
     now += T.playGap; powerMonitor.emit('resume');
     await new Promise(resolve => setTimeout(resolve, 1200));
-    assert.equal(await pet('document.querySelector("#emotion-orb").hidden'), true);
+    assert.equal(await pet('document.querySelector("#emotion-orb").hidden'), false);
+    assert.equal(await pet('document.querySelector("#emotion-orb").dataset.play'), 'false', 'resume while still locked cannot resume play');
     powerMonitor.emit('unlock-screen');
     await until(() => pet('document.querySelector("#emotion-orb").dataset.play === "true" && !document.querySelector("#emotion-orb").hidden'));
     await submit('그만');
     for (let i = 0; i < 3; i++) await pet('(async()=>{ window.petWindow.beginDrag(); await window.petWindow.endDrag(); })()');
     // Prompt display/focus methods are disabled globally in this isolated test.
     await until(() => pet('document.querySelector("#egg").dataset.social === "away"'));
+    assert.equal(await pet('document.querySelector("#emotion-orb").hidden'), false);
+    assert.equal(await pet('document.querySelector("#emotion-orb").dataset.expression'), 'refusal');
+    assert.equal((await pet('window.babyLife.read()')).social.accepting, false, 'input acceptance and refusal orb share one decision');
     await capture('away');
     assert.equal(await pet('document.documentElement.scrollWidth <= innerWidth'), true);
     // A sleeping/distancing pet cannot delay the independent five-minute deadline.
@@ -118,6 +124,8 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal((await run('window.timerPanel.read()'))[0].status, 'due');
     now += T.recovery;
     await until(() => pet('document.querySelector("#egg").dataset.social !== "away"'));
+    assert.notEqual(await pet('document.querySelector("#emotion-orb").dataset.expression'), 'refusal');
+    assert.equal((await pet('window.babyLife.read()')).social.accepting, true);
     // Drive the actual pet button while the separate input panel is already open.
     // A press is visual feedback; only the completed, unmoved gesture is contact.
     let opens = 0;
@@ -134,12 +142,16 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     now += T.touchWindow + 1;
     await until(() => Promise.resolve(touches() === 0));
     const experiencesBeforeClicks = Number(count());
-    screen.getCursorScreenPoint = () => ({ x: win.getBounds().x + 90, y: win.getBounds().y + 200 });
+    const bodyPoint = () => pet(`(() => { const box = document.querySelector('#egg .shell').getBoundingClientRect();
+      return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) }; })()`);
     const clickPet = async (expectedTouches: number) => {
-      win.webContents.sendInputEvent({ type: 'mouseMove', x: 90, y: 200 });
-      win.webContents.sendInputEvent({ type: 'mouseDown', x: 90, y: 200, button: 'left', clickCount: 1 });
+      const point = await bodyPoint();
+      const bounds = win.getBounds();
+      screen.getCursorScreenPoint = () => ({ x: bounds.x + point.x, y: bounds.y + point.y });
+      win.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+      win.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
       await until(() => pet('document.querySelector("#egg").classList.contains("pressed")'));
-      win.webContents.sendInputEvent({ type: 'mouseUp', x: 90, y: 200, button: 'left', clickCount: 1 });
+      win.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
       await until(() => Promise.resolve(touches() === expectedTouches));
     };
     await clickPet(1);

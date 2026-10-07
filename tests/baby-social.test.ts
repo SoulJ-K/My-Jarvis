@@ -33,17 +33,17 @@ test('joy and curiosity expire independently of slow relationship, without expos
   s = advance(s, T.emotion, true, tick).state;
   assert.equal(socialView(s, 'orb', true).emotion, 'quiet');
   assert.equal(s.familiarity, 1);
-  assert.equal(socialView(s, 'orb', true).orb, null);
-  assert.deepEqual(Object.keys(socialView(s, 'orb', true)), ['emotion','motion','orb','caption']);
+  assert.equal(socialView(s, 'orb', true).orb.expression, 'quiet');
+  assert.deepEqual(Object.keys(socialView(s, 'orb', true)), ['emotion','motion','orb','accepting','caption']);
   s = advance(s, T.emotion, true, { type: 'touch' }).state;
   assert.equal(s.emotion, 'curiosity');
 });
-test('repeated touch records once, hides orb, gives space, and naturally recovers without care debt', () => {
+test('repeated touch records once, shows refusal orb, gives space, and naturally recovers without care debt', () => {
   let s = initialBabySocial(); let events: string[] = [];
   for (let i = 0; i < 100; i++) { const next = advance(s, i, true, { type: 'touch' }); s = next.state; events.push(...next.events); }
   assert.deepEqual(events, ['repeated_touch']);
   assert.equal(socialView(s, 'orb', true).motion, 'away');
-  assert.equal(socialView(s, 'orb', true).orb, null);
+  assert.equal(socialView(s, 'orb', true).orb.expression, 'refusal');
   const bond = s.familiarity;
   s = advance(s, T.distance + 100, true, tick).state;
   assert.notEqual(socialView(s, 'orb', true).motion, 'away');
@@ -118,7 +118,7 @@ test('v5 preserves identity/orb, restarts mood/relationship/experiences and roll
   repo.close(); now += 1000;
   repo = new BabyLifeRepository(directory, () => now);
   assert.equal(repo.view(repo.apply(tick)).social.emotion, 'joy');
-  now = T.emotion; assert.equal(repo.view(repo.apply(tick)).social.orb, null);
+  now = T.emotion; assert.equal(repo.view(repo.apply(tick)).social.orb.expression, 'quiet');
   assert.equal(repo.readSocial().familiarity, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM baby_social_experience').get()!.n, 1);
   const persisted = JSON.stringify(db.prepare('SELECT * FROM baby_social_experience').all());
@@ -130,11 +130,11 @@ test('hunger and autonomous sleep do not become orb emotions; repeated sleep tou
   const directory = seed(t); let now = 0;
   const repo = new BabyLifeRepository(directory, () => now);
   now = BABY_TIMING.hungry;
-  let view = repo.view(repo.apply(tick)); assert.ok(view.offerId); assert.equal(view.social.orb, null);
+  let view = repo.view(repo.apply(tick)); assert.ok(view.offerId); assert.equal(view.social.orb.expression, 'quiet');
   view = repo.view(repo.apply({ type: 'praise' })); assert.ok(view.offerId); assert.equal(view.social.emotion, 'joy');
   now = BABY_TIMING.awake;
   for (let i = 0; i < 5; i++) view = repo.view(repo.apply({ type: 'touch' }));
-  assert.equal(view.behavior, 'sleeping'); assert.equal(view.social.orb, null);
+  assert.equal(view.behavior, 'sleeping'); assert.equal(view.social.orb.expression, 'refusal');
   assert.equal(babyView(repo.read()!).behavior, 'sleeping'); repo.close();
 });
 test('sleeping repeat persists through restart and shows finite distance after natural wake', t => {

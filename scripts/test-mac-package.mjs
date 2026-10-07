@@ -15,11 +15,15 @@ try {
     .filter(entry => entry.isFile()).map(entry => path.relative(packaged.payload, path.join(entry.parentPath, entry.name))).sort();
   assert(files.includes('dist/src/main/index.js'));
   assert(files.includes('dist/src/renderer/prompt.html'));
-  assert(files.every(file => file === 'package.json' || file === 'launch.cjs' || file.startsWith('dist/src/')));
+  assert(files.every(file => file === 'package.json' || file === 'launch.cjs' || file.startsWith('dist/src/') || file === 'dist/native/jarvis-dock-snack.node'));
   assert(files.every(file => !/\.(sqlite3?|db|env)$/.test(file)));
   for (const file of files.filter(file => file.startsWith('dist/src/'))) {
     assert.deepEqual(readFileSync(path.join(packaged.payload, file)), readFileSync(path.join(root, file)), file);
   }
+  const dockHelper=path.join(packaged.payload,'dist/native/jarvis-dock-snack.node');
+  assert(files.includes('dist/native/jarvis-dock-snack.node'));
+  assert.deepEqual(readFileSync(dockHelper),readFileSync(path.join(root,'dist/native/jarvis-dock-snack.node')));
+  assert.equal(createRequire(import.meta.url)(dockHelper).selfTest(), true);
   const identity = execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(packaged.bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
   assert.equal(identity, 'local.jarvispet.validation');
   const env = { ...process.env };

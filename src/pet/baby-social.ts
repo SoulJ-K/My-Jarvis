@@ -13,7 +13,7 @@ export interface BabySocial {
   nextRequestedPlay?: number;
 }
 export type SocialCommand = { type: 'tick'; active?: boolean; cursorNear?: boolean } |
-  { type: 'touch' } | { type: 'greet' } | { type: 'praise' } | { type: 'orb' } | { type: 'stop' };
+  { type: 'greeting' | 'hungry' | 'missed' | 'what-doing' } | { type: 'touch' } | { type: 'greet' } | { type: 'praise' } | { type: 'orb' } | { type: 'stop' };
 export type SocialExperience = 'praise' | 'reunion' | 'repeated_touch' | 'cursor_play' | 'orb_play';
 export function initialBabySocial(elapsedMs = 0): BabySocial {
   return { elapsedMs, familiarity: 0, strain: 0, recoveryAt: elapsedMs, lastBond: null,
@@ -34,6 +34,9 @@ export function validateBabySocial(s: BabySocial): void {
 export function parseBabyInput(input: unknown): SocialCommand | null {
   if (typeof input !== 'string' || input.length > 80) throw new Error('BABY_INPUT_INVALID');
   const text = input.trim();
+  if (text === '뭐해') return { type: 'what-doing' };
+  if (text === '배고파') return { type: 'hungry' };
+  if (text === '보고싶었어') return { type: 'missed' };
   if (text === '안녕') return { type: 'greet' };
   if (text === '잘했어') return { type: 'praise' };
   if (text === '구슬 놀이') return { type: 'orb' };
@@ -74,8 +77,9 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
       events.push('repeated_touch');
     } else if (s.touches < 3 && elapsedMs >= s.distanceUntil && resting) { mood('curiosity'); bond(); }
   }
-  const available = resting && elapsedMs >= s.distanceUntil;
-  if (command.type === 'greet') {
+  const available = acceptsInteraction(s);
+  const canPlay = available && resting;
+  if (command.type === 'greet' || command.type === 'greeting' || command.type === 'missed') {
     if (available) mood('joy');
     if (s.reunionPending) { events.push('reunion'); s.reunionPending = false; }
     if (available) bond();
@@ -84,12 +88,13 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
     events.push('praise'); s.lastPraise = elapsedMs;
     if (available) { mood('joy'); bond(); }
   }
+  if (available && (command.type === 'hungry' || command.type === 'what-doing')) mood('curiosity');
   // Give an explicit request its own quiet gap. Autonomous play must not consume
   // the only instant at which the user's request would otherwise be allowed.
   const requestedOrb = command.type === 'orb' && elapsedMs >= (s.nextRequestedPlay ?? 0);
   const autonomousPlay = command.type === 'tick' && command.active && elapsedMs >= s.nextPlay &&
     (command.cursorNear || elapsedMs >= T.playGap);
-  if (available && (requestedOrb || !s.play && autonomousPlay)) {
+  if (canPlay && (requestedOrb || !s.play && autonomousPlay)) {
     s.play = command.type === 'tick' && command.cursorNear ? 'cursor' : 'orb';
     s.playUntil = elapsedMs + T.play; s.nextPlay = elapsedMs + T.playGap;
     if (requestedOrb) s.nextRequestedPlay = elapsedMs + T.playGap;
@@ -101,14 +106,14 @@ export function advanceBabySocial(before: BabySocial, elapsedMs: number, resting
   validateBabySocial(s);
   return { state: s, events };
 }
+/** Shared with input acceptance; body schedule pressure never changes refusal. */
+export function acceptsInteraction(s: BabySocial): boolean { return s.elapsedMs >= s.distanceUntil; }
 export function socialView(s: BabySocial, orbId: string, resting: boolean, drowsy = false) {
-  const distancing = s.elapsedMs < s.distanceUntil;
+  const accepting = acceptsInteraction(s);
   const emotion = resting ? s.emotion : 'quiet';
-  return { emotion, motion: distancing && (resting || drowsy) ? 'away' : !resting ? 'still' : s.play === 'cursor' ? 'chase' :
+  return { emotion, motion: !accepting && (resting || drowsy) ? 'away' : !resting ? 'still' : s.play === 'cursor' ? 'chase' :
     s.play === 'orb' ? 'play-orb' : emotion === 'joy' ? 'bounce' : emotion === 'curiosity' ? 'tilt' :
     s.familiarity - s.strain >= 3 ? 'near' : 'still',
-    orb: resting && !distancing && (emotion !== 'quiet' || s.play === 'orb') ? { id: orbId, expression: emotion } : null,
-    caption: distancing && (resting || drowsy) ? '잠깐 쉴래…' : !resting ? '' : s.play === 'cursor' ? '뭐지?' : s.play === 'orb' ? '데굴데굴' :
-      emotion === 'joy' ? '좋아!' : emotion === 'curiosity' ? '응?' : '' };
+    orb: { id: orbId, expression: accepting ? emotion : 'refusal' }, accepting, caption: '' };
 }
 export type BabySocialView = ReturnType<typeof socialView>;

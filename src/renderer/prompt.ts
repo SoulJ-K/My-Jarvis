@@ -12,8 +12,7 @@
   const editButton = document.querySelector<HTMLButtonElement>('#schedule-edit')!;
   const idleMessage = 'Enter로 보내고, Esc로 입력창을 닫을 수 있어요.';
   let composing = false;
-  let compositionEnded = -Infinity;
-  let submitPressedAt = -Infinity;
+  let submitAfterComposition = false;
   let busy = false;
   let requestId = crypto.randomUUID();
   let draftId: string | undefined;
@@ -64,100 +63,129 @@
     session++; cancelAutoClose(); discardDraft();
     savedResult = undefined;
     input.value = ''; requestId = crypto.randomUUID(); composing = false;
-    compositionEnded = -Infinity; submitPressedAt = -Infinity;
+    submitAfterComposition = false;
+    pinReplacement = undefined; pinPanel.hidden = true;
     setBusy(false); requestMessage(idleMessage);
   }
-  const systemLabels = {
-    'not-requested': '시스템 알림 미요청', requested: '시스템 알림 요청됨 · 표시 확인 대기',
-    shown: '시스템 표시 신호 수신 · 읽음 여부는 알 수 없음', failed: '시스템 알림 실패 · 이 앱 안내에서 확인하세요',
-    unsupported: '시스템 알림 미지원 · 이 앱 안내에서 확인하세요', unknown: '시스템 알림 표시 여부를 확인하지 못함',
+  const menu = document.querySelector<HTMLSelectElement>('#timer-menu')!;
+  const pinPanel = document.querySelector<HTMLElement>('#pin-confirmation')!;
+  let pinReplacement: (() => Promise<void>) | undefined;
+  let state: import('../shared/assistant-panel').AssistantPanelState | undefined;
+  let signature = '';
+  const systemLabels: Record<string, string> = {
+    'not-requested': '시스템 알림 미요청', requested: '시스템 전달 결과 대기',
+    shown: '시스템 표시 신호 수신', failed: '시스템 알림 실패',
+    unsupported: '시스템 알림 미지원', unknown: '시스템 전달 결과 불명확',
   };
-  async function refresh() {
+  const duration = (ms: number) => {
+    const seconds = Math.max(0, Math.ceil(ms / 1000));
+    const hours = Math.floor(seconds / 3600);
+    return (hours ? `${hours}:` : '') + `${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  };
+  const scheduleTime = (row: { localDateTime: string; timeZone: string; utcOffsetMinutes: number }) =>
+    `${row.localDateTime} · ${row.timeZone}`;
+  function askPin(replace: () => Promise<void>) { pinReplacement = replace; pinPanel.hidden = false; cancelAutoClose(); }
+  document.querySelector<HTMLButtonElement>('#pin-replace')!.onclick = () => {
+    const run = pinReplacement; pinReplacement = undefined; pinPanel.hidden = true;
+    if (run) void run();
+  };
+  document.querySelector<HTMLButtonElement>('#pin-keep')!.onclick = () => { pinReplacement = undefined; pinPanel.hidden = true; };
+  async function perform(action: import('../shared/assistant-panel').PanelAction) {
+    cancelAutoClose(); savedResult = undefined;
     try {
-      const rows = await window.timerPanel.read();
-      list.replaceChildren();
-      if (!rows.length) { list.textContent = '진행 중이거나 확인할 타이머가 없습니다.'; return; }
-      for (const row of rows) {
-        const item = document.createElement('article'); item.className = 'timer';
-        const title = document.createElement('strong');
-        title.textContent = row.status === 'pending' ? '5분 타이머 · 진행 중' :
-          row.reason === 'recovered' ? '지난 타이머 · 재시작 후 복원' : row.reason === 'late' ? '5분 타이머 · 늦게 확인됨' : '5분 타이머 · 완료';
-        const detail = document.createElement('p'); detail.className = 'detail';
-        detail.textContent = row.status === 'pending' ?
-          `등록 당시 종료 예정 ${new Date(row.dueAt).toLocaleTimeString('ko-KR')}` : systemLabels[row.systemDelivery];
-        const action = document.createElement('button'); action.className = 'secondary';
-        action.textContent = row.status === 'pending' ? '타이머 취소' : '확인했어요';
-        action.onclick = async () => {
-          cancelAutoClose(); savedResult = undefined; action.disabled = true;
-          try {
-            if (row.status === 'pending') { const reply = await window.timerPanel.cancel(row.id); message(reply.message, !reply.ok); }
-            else await window.timerPanel.acknowledge(row.id);
-            await refresh();
-          } catch { message('저장하지 못했습니다. 타이머 상태를 다시 확인해 주세요.', true); action.disabled = false; }
-        };
-        item.append(title, detail, action); list.append(item);
-        if (row.status === 'due' && !document.hidden) void window.timerPanel.displayed(row.id).catch(() => {});
-      }
-    } catch { list.textContent = '타이머 정보를 읽지 못했습니다. 창을 다시 열어 확인해 주세요.'; }
+      const reply = await window.assistantPanel.action(action);
+      message(reply.message, !reply.ok);
+      if (reply.needsPinConfirmation && action.type === 'menu') askPin(() => perform({ ...action, replace: true }));
+      await refresh();
+    } catch { message('변경을 저장하지 못했어요. 다시 확인해 주세요.', true); }
   }
-  const scheduleTime = (row: { localDateTime: string; timeZone: string; utcOffsetMinutes: number }) => {
-    const offset = row.utcOffsetMinutes;
-    return `${row.localDateTime} · ${row.timeZone} (UTC${offset < 0 ? '−' : '+'}${String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0')}:${String(Math.abs(offset) % 60).padStart(2, '0')})`;
-  };
-  async function refreshSchedules() {
+  async function refresh() {
     const version = ++refreshVersion;
     try {
-      const rows = await window.schedulePanel.read();
+      const next = await window.assistantPanel.read();
       if (version !== refreshVersion) return;
-      scheduleList.replaceChildren();
-      if (!rows.length) { scheduleList.textContent = '예약하거나 확인할 알림이 없습니다.'; return; }
-      for (const row of rows) {
-        const item = document.createElement('article'); item.className = 'timer';
-        const title = document.createElement('strong');
-        const state = row.status === 'pending' ? '예약됨' : row.reason === 'recovered' ? '재시작 후 복원' : row.reason === 'late' ? '늦게 확인됨' : '시각이 되었습니다';
-        title.textContent = `${row.kind === 'alarm' ? '알람' : '리마인더'} · ${state}`;
-        const content = document.createElement('p'); content.textContent = row.content;
-        const detail = document.createElement('p'); detail.className = 'detail'; detail.textContent = scheduleTime(row);
-        const delivery = document.createElement('p'); delivery.className = 'detail';
-        if (row.status === 'due') delivery.textContent = systemLabels[row.systemDelivery];
-        const action = document.createElement('button'); action.className = 'secondary';
-        action.textContent = row.status === 'pending' ? '알림 취소' : '확인했어요';
-        action.setAttribute('aria-label', `${row.content} · ${row.localDateTime} · ${action.textContent}`);
-        action.onclick = async () => {
-          cancelAutoClose(); savedResult = undefined; action.disabled = true;
-          try {
-            if (row.status === 'pending') { const reply = await window.schedulePanel.cancel(row.id); message(reply.message, !reply.ok); }
-            else { await window.schedulePanel.acknowledge(row.id); message('확인한 알림을 목록에서 정리했습니다.'); }
-            await refreshSchedules();
-          } catch { message('변경을 저장하지 못했습니다. 다시 확인해 주세요.', true); action.disabled = false; }
-        };
-        item.append(title, content, detail, delivery, action); scheduleList.append(item);
-        if (row.status === 'due' && !document.hidden) void window.schedulePanel.displayed(row.id).catch(() => {});
+      state = next;
+      const warning=document.querySelector<HTMLElement>('#list-warning');
+      if(warning) {warning.textContent=next.warning ?? '';warning.hidden=!next.warning;}
+      document.querySelector<HTMLElement>('#baby-examples')!.hidden = next.stage !== 'baby';
+      const nextSignature = JSON.stringify({ stage: next.stage, items: next.items.map(({ remainingMs, ...item }) => item) });
+      if (signature !== nextSignature) {
+        signature = nextSignature; list.replaceChildren(); scheduleList.replaceChildren();
+        const sorted = [...next.items].sort((a, b) => {
+          if (a.status === 'paused' && b.status !== 'paused') return 1;
+          if (b.status === 'paused' && a.status !== 'paused') return -1;
+          return a.dueAt - b.dueAt || a.id.localeCompare(b.id);
+        });
+        for (const row of sorted) {
+          const item = document.createElement('article'); item.className = 'timer';
+          const title = document.createElement('strong'); title.textContent = row.title;
+          const detail = document.createElement('p'); detail.className = 'detail';
+          const kind = row.kind === 'timer' ? '타이머' : row.kind === 'alarm' ? '알람' : '리마인더';
+          detail.textContent = `${kind} · ${row.status === 'paused' ? '일시정지' : row.status === 'pending' ? '예정 ' + new Date(row.dueAt).toLocaleString('ko-KR') : row.acknowledged ? '알림 확인됨 · 일 결과 대기' : '시간 지남 · 미확인'}`;
+          if(row.status==='due' && row.reason==='recovered') detail.textContent+=' · 재시작 후 복원';
+          if(row.status==='due' && row.reason==='late') detail.textContent+=' · 늦게 확인됨';
+          const remaining = document.createElement('span'); remaining.className = 'remaining';
+          remaining.dataset.item = `${row.kind}:${row.id}`;
+          const delivery = document.createElement('p'); delivery.className = 'detail';
+          if (row.status === 'due') delivery.textContent = systemLabels[row.delivery] ?? '';
+          const actions = document.createElement('div'); actions.className = 'actions';
+          const button = (label: string, type: 'ack' | 'cancel' | 'pause' | 'resume' | 'restart') => {
+            const node = document.createElement('button'); node.type = 'button'; node.className = 'secondary'; node.textContent = label;
+            node.onclick = async () => { node.disabled = true; await perform({ type, id: row.id, kind: row.kind }); if (node.isConnected) node.disabled = false; };
+            actions.append(node);
+          };
+          if (row.status === 'due') button(next.stage === 'baby' ? '결과 알려주기' : '알림 확인', 'ack');
+          if (row.kind === 'timer') {
+            if (row.timerState === 'pending') button('일시정지', 'pause');
+            if (row.timerState === 'paused') button('계속', 'resume');
+            button('처음부터', 'restart');
+            if (row.timerState === 'pending' || row.timerState === 'paused') {
+              const select = document.createElement('select'); select.setAttribute('aria-label', `${row.title} 메뉴바 표시`);
+              for (const [value, label] of [['default', '3분 전부터 표시'], ['pinned', '고정'], ['hidden', '표시 안 함']]) {
+                const option = document.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+              }
+              select.value = row.menu ?? 'default';
+              select.onchange = () => { void perform({ type: 'menu', kind: row.kind, id: row.id, mode: select.value as import('../shared/assistant-panel').TimerMenu }); select.value = row.menu ?? 'default'; };
+              item.append(select);
+            }
+          }
+          button('취소', 'cancel'); item.prepend(title, detail, remaining, delivery); item.append(actions);
+          (row.status === 'due' ? scheduleList : list).append(item);
+        }
+        if (!list.childElementCount) list.textContent = '진행 중인 일정이 없어요.';
+        if (!scheduleList.childElementCount) scheduleList.textContent = '확인할 알림이 없어요.';
       }
-    } catch { if (version === refreshVersion) scheduleList.textContent = '알림 목록을 읽지 못했습니다. 창을 다시 열어 확인해 주세요.'; }
+      for (const span of document.querySelectorAll<HTMLElement>('[data-item]')) {
+        const row = next.items.find(item => `${item.kind}:${item.id}` === span.dataset.item);
+        span.textContent = row && row.kind === 'timer' && row.status !== 'due' ? `남은 시간 ${duration(row.remainingMs)}` : '';
+      }
+    } catch { if (version === refreshVersion) message('목록을 읽지 못했어요. 잠시 후 다시 확인해 주세요.', true); }
   }
+  const refreshSchedules = refresh;
   input.addEventListener('compositionstart', () => { composing = true; cancelAutoClose(); });
-  input.addEventListener('compositionend', () => { composing = false; compositionEnded = performance.now(); });
-  submit.addEventListener('pointerdown', () => { submitPressedAt = performance.now(); });
+  input.addEventListener('compositionend', () => {
+    composing = false;
+    if (submitAfterComposition) {
+      submitAfterComposition = false; const activeSession = session;
+      setTimeout(() => { if (session === activeSession && !busy && !composing) form.requestSubmit(submit); }, 0);
+    }
+  });
   input.addEventListener('input', () => {
     cancelAutoClose(); requestId = crypto.randomUUID(); discardDraft(); requestMessage(savedResult ?? '');
   });
   form.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229 || performance.now() - compositionEnded < 100)) event.preventDefault();
+    if (event.key === 'Enter' && (composing || event.isComposing || event.keyCode === 229)) {
+      event.preventDefault(); submitAfterComposition = true;
+    }
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const pointerSubmit = event.submitter === submit && performance.now() - submitPressedAt < 1000;
-    submitPressedAt = -Infinity;
-    if (busy || composing || (!pointerSubmit && performance.now() - compositionEnded < 100)) return;
+    if (busy || composing) return;
     cancelAutoClose(); savedResult = undefined;
     const text = input.value.trim();
     if (!text) { requestMessage('부탁할 내용을 적어 주세요.', true); input.focus(); return; }
     // Route calendar-looking requests to the existing preview; interpretation remains in the service.
-    const calendar = /알람|알림|리마인더|오늘|내일|오전|오후|\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(text);
-    if (!calendar && !/^5\s*분\s*타이머$/.test(text) && !['안녕', '잘했어', '구슬 놀이', '그만'].includes(text)) {
-      discardDraft(); requestMessage('아직 이해하지 못했어요. 아래 입력 예시를 확인해 주세요. 실행하거나 저장한 내용은 없습니다.', true); input.focus(); return;
-    }
+    const calendar = !/타이머/.test(text) && /알람|알림|리마인더|오늘|내일|오전|오후|\d{4}-\d{2}-\d{2}|\d{1,2}:\d{2}/.test(text);
     setBusy(true); discardDraft(); requestMessage(calendar ? '날짜와 시간을 확인하고 있어요…' : '요청을 처리하고 있어요…');
     const activeSession = session;
     try {
@@ -177,8 +205,6 @@
               if (busy) return;
               input.value = choice.input;
               input.dispatchEvent(new Event('input', { bubbles: true }));
-              // A deliberate choice must pass the recent IME Enter guard.
-              submitPressedAt = performance.now();
               form.requestSubmit(submit);
             };
             choices.append(button);
@@ -186,7 +212,16 @@
           clarification.hidden = false;
         }
       } else {
-        const reply = await window.timerPanel.submit(requestId, text);
+        const snack = /^간식\s*먹(?:어|을래)[?？!]?$/.test(text);
+        const reply = snack ? await window.assistantPanel.snack() : /타이머/.test(text) ?
+          await window.assistantPanel.submitTimer(requestId, text, menu.value as import('../shared/assistant-panel').TimerMenu) : await window.timerPanel.submit(requestId, text);
+        if ('needsPinConfirmation' in reply && reply.needsPinConfirmation) {
+          const pendingId = requestId; const pendingText = text;
+          askPin(async () => {
+            try { const saved = await window.assistantPanel.submitTimer(pendingId, pendingText, 'pinned', true); requestMessage(saved.message, !saved.ok); if (saved.ok) { input.value = ''; requestId = crypto.randomUUID(); } await refresh(); }
+            catch { requestMessage('교체하지 못했어요. 다시 확인해 주세요.', true); }
+          });
+        }
         if (session !== activeSession) return;
         requestMessage(reply.message, !reply.ok); void refresh();
         if (reply.ok) {
@@ -233,6 +268,8 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { void refresh(); void refreshSchedules(); } });
   window.timerPanel.onClose(resetInput);
   window.timerPanel.onOpen(() => { cancelAutoClose(); if (!busy && !draftId) { requestMessage(idleMessage); input.focus(); } void refresh(); void refreshSchedules(); });
+  window.assistantPanel.subscribe(() => { void refresh(); });
+  setInterval(() => { if (!document.hidden) void refresh(); }, 1000);
   window.timerPanel.subscribe(() => { void refresh(); });
   window.schedulePanel.subscribe(() => { void refreshSchedules(); });
   void refresh(); void refreshSchedules();

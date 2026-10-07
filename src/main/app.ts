@@ -1,7 +1,16 @@
+import { PanelController } from '../assistant/panel-controller';
+import { FollowupService } from '../assistant/followup';
+import { FollowupRepository } from '../storage/followup-repository';
+import { selectMenuTimer, formatMenuTimer } from '../shared/timer';
+import { createResultCardWindow } from './result-card-window';
+import { notificationQueue } from './notification-queue';
+import { Notification } from 'electron';
+import type { FollowupNotice } from '../shared/followup';
+import { requestSnack } from './snack-flow';
 import { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, dialog, Menu, nativeImage, powerMonitor, Tray, type BrowserWindow } from 'electron';
 import { openEggLife } from '../storage/egg-life-repository';
-import { createPetWindow, initialPosition, placeBabyAfterHatch, recordPetDiagnostic } from './windows';
+import { createPetWindow, initialPosition, placeBabyAfterHatch, recordPetDiagnostic, refreshBabyPresentation } from './windows';
 import { TimerRepository } from '../storage/timer-repository';
 import { TimerService } from '../assistant/timer';
 import { ReminderService, type NotifySchedule } from '../assistant/reminders';
@@ -86,6 +95,47 @@ export function startJarvis(options: {
     const eggNow = options.eggNow ?? Date.now;
     hatching = state.ready && state.name === null;
     const baby = new BabyLifeRepository(app.getPath('userData'));
+    const previousBabyObservation = baby.read()?.observedAtMs ?? null;
+    let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
+    let cardWindow: Awaited<ReturnType<typeof createResultCardWindow>> | undefined;
+    let service: TimerService | undefined;
+    let schedules: ReminderService | undefined;
+    let followups: FollowupService | undefined;
+    let controller: PanelController | undefined;
+    let refreshAll = () => {};
+    const hiddenBackend = { isSupported: () => false, create: () => { throw new Error('HIDDEN_NOTIFICATION_DISABLED'); } };
+    const notifications = timerNotifications(undefined, {
+      ...(show ? {} : {backend:hiddenBackend}),
+      onClick: item => { if (item) controller?.acknowledge({kind:'timer',id:item.id},0); },
+    });
+    const scheduleNotices = scheduleNotifications(undefined, {
+      ...(show && !options.notifySchedule ? {} : {backend:hiddenBackend}),
+      onClick: item => { controller?.acknowledge({kind:item.kind,id:item.id},0); },
+    });
+    const followNotices = notificationQueue<FollowupNotice>(item => ({
+      title: 'Jarvis Pet · 다시 알려드려요', body:item.title, silent:false,
+    }), undefined, {backend: show ? {isSupported:()=>Notification.isSupported(),create:values=>new Notification(values)} : hiddenBackend,
+      onClick:item=>{controller?.acknowledge(item,item.round);} });
+    try {
+      service = new TimerService(new TimerRepository(app.getPath('userData')),
+        {wall:()=>Date.now(),monotonic:()=>performance.now()}, notifications.notify, ()=>refreshAll());
+      try {
+        schedules = new ReminderService(new ScheduleRepository(app.getPath('userData')),Date.now,
+          options.notifySchedule ?? scheduleNotices.notify,()=>refreshAll());
+      } catch {
+        console.error('알람 저장소 오류: SCHEDULE_STORAGE_FAILED');
+        if (show) dialog.showErrorBox('알람을 열지 못했습니다','기존 알람 자료는 보존합니다. 타이머는 계속 사용할 수 있습니다.');
+      }
+      followups = new FollowupService(new FollowupRepository(app.getPath('userData')),Date.now,()=>refreshAll());
+      controller = new PanelController(service,schedules,followups,()=>state.stage,()=>refreshAll(),
+        async ()=>state.stage==='baby' ? requestSnack(baby,panels?.prompt,show) : {ok:false,message:'아기가 된 뒤에 간식을 줄 수 있어요.'});
+      controller.sync();
+      baby.setAttention(controller.attention());
+    } catch {
+      service?.dispose(); service=undefined; schedules?.dispose(); schedules=undefined; followups?.dispose(); followups=undefined;
+      console.error('입력 저장소 오류: ASSISTANT_STORAGE_FAILED');
+      if (show) dialog.showErrorBox('입력을 열지 못했습니다','기존 저장 자료를 보존한 채 입력 기능을 멈췄습니다.');
+    }
     const life = openEggLife(app.getPath('userData'), eggNow);
     let refreshTray = () => {};
     const checkpoint = () => {
@@ -110,14 +160,16 @@ export function startJarvis(options: {
       syncHatch = async () => {}; refreshTray = () => {};
       checkpoint(); life.close(); lifecycle.close(); baby.close();
     });
-    let panels: Awaited<ReturnType<typeof createPromptWindows>> | undefined;
     win = await createPetWindow(pet, show && (!hatching || state.completed === null), kind => {
       // Waiting for an explicit start is still egg life; readiness is not a care lock.
       if (lifecycle.read().completed !== null) throw new Error('EGG_CARE_ENDED');
       life.care(kind);
       checkpoint();
     }, () => ({ ...pet, stage: state.stage, ...(state.name !== null ? { name: state.name } : {}) }), baby,
-    () => panels?.open(), () => !quitting);
+    () => panels?.open(), () => !quitting, show ? async () => {
+      const reply=await requestSnack(baby,win,true);
+      if(win && !win.isDestroyed()) await dialog.showMessageBox(win,{type:reply.ok?'info':'warning',title:'휴지통 간식',message:reply.message,buttons:['확인']});
+    } : undefined, previousBabyObservation);
     win.on('closed', () => {
       if (!quitting) recordPetDiagnostic('pet_window_closed_unexpectedly');
       app.quit();
@@ -135,7 +187,7 @@ export function startJarvis(options: {
         win!.setTitle('Jarvis Pet · 아기');
         win!.webContents.once('did-finish-load', showPet);
         win!.reload();
-        refreshTray();
+        refreshAll();
       }).then(created => {
         if (quitting) created.dispose();
         else hatch = created;
@@ -143,55 +195,60 @@ export function startJarvis(options: {
       return creatingHatch;
     };
     await syncHatch();
-    const notifications = timerNotifications(undefined, show ? {} : {
-      backend: { isSupported: () => false, create: () => { throw new Error('HIDDEN_NOTIFICATION_DISABLED'); } },
-    });
-    // Hidden automated runs never request macOS notification permission.
-    const scheduleNotices = show && !options.notifySchedule ? scheduleNotifications() : undefined;
-    let service: TimerService | undefined;
-    let schedules: ReminderService | undefined;
-    try {
-      service = new TimerService(new TimerRepository(app.getPath('userData')),
-        { wall: () => Date.now(), monotonic: () => performance.now() }, notifications.notify,
-        () => panels?.refresh());
-      try {
-        schedules = new ReminderService(new ScheduleRepository(app.getPath('userData')), () => Date.now(),
-          options.notifySchedule ?? scheduleNotices?.notify, () => panels?.refresh());
-      } catch {
-        console.error('알람 저장소 오류: SCHEDULE_STORAGE_FAILED');
-        if (show) dialog.showErrorBox('알람을 열지 못했습니다', '알람 저장소를 읽지 못했습니다. 기존 파일과 타이머·알은 보존합니다.');
-      }
-      panels = await createPromptWindows(service, show, schedules, command => {
-        if (state.stage !== 'baby' || !state.name) return null;
-        const view = baby.view(baby.apply(command));
-        if (!win!.isDestroyed()) win!.webContents.send('baby:state', view);
-        if (command.type === 'stop') return '놀이를 멈추고 쉬어요.';
-        if (view.behavior !== 'resting') return '지금은 먹거나 쉬고 있어요. 조용히 들었어요.';
-        if (command.type === 'orb' && view.social.motion !== 'play-orb') return '지금은 잠깐 쉬고 싶대요.';
-        return view.social.caption || '조용히 들었어요.';
-      });
-      const timerService = service;
-      const tick = () => { try { timerService.tick(); } catch { console.error('타이머 저장 오류: TIMER_TICK_FAILED'); } };
-      const scheduleTick = () => { try { schedules?.tick(); } catch { console.error('알람 저장 오류: SCHEDULE_TICK_FAILED'); } };
-      const interval = setInterval(() => { tick(); scheduleTick(); }, 500);
-      const resume = () => { try { timerService.resume(); } catch { console.error('타이머 복원 오류: TIMER_RESUME_FAILED'); } };
-      const suspend = () => timerService.suspend();
-      powerMonitor.on('suspend', suspend);
-      powerMonitor.on('resume', resume);
-      powerMonitor.on('resume', scheduleTick);
-      cleanupTimers = () => { clearInterval(interval); powerMonitor.removeListener('suspend', suspend); powerMonitor.removeListener('resume', resume); powerMonitor.removeListener('resume', scheduleTick); notifications.dispose(); scheduleNotices?.dispose(); panels?.dispose(); timerService.dispose(); schedules?.dispose(); };
-      panels.refresh();
-    } catch {
-      notifications.dispose(); scheduleNotices?.dispose(); service?.dispose(); schedules?.dispose();
-      console.error('타이머를 열지 못했습니다: TIMER_STORAGE_FAILED');
-      if (show) dialog.showErrorBox('타이머를 열지 못했습니다', '타이머 저장소를 읽지 못해 입력 기능을 멈췄습니다. 기존 파일과 알은 보존합니다.');
-    }
+    if (service && controller && followups) {
+      const timerService=service, results=followups, joined=controller;
+      cardWindow=await createResultCardWindow(win);
+      panels = await createPromptWindows(service,show,schedules,command=>{
+        if (state.stage!=='baby' || !state.name) return null;
+        baby.apply(command); refreshBabyPresentation(win!);
+        return '아기의 몸짓과 감정구슬을 봐 주세요.';
+      }, {card:cardWindow.win,cardPage:cardWindow.page,api:{
+        read:async()=>joined.state(),action:action=>joined.action(action),
+        submitTimer:async(id,input,mode,replace)=>joined.submitTimer(id,input,mode,replace),
+        snack:()=>joined.snack(),
+      }});
+      let refreshing=false;
+      refreshAll=()=>{
+        if (quitting || refreshing) return;
+        refreshing=true;
+        try {
+          joined.sync(); baby.setAttention(joined.attention()); panels?.refresh();
+          cardWindow?.refresh(show && state.stage==='baby' && !hatching && joined.state().card!==null);
+          refreshTray();
+        } catch { console.error('일정 연결 오류: ASSISTANT_REFRESH_FAILED'); }
+        finally {refreshing=false;}
+      };
+      const tick=()=>{
+        try {timerService.tick();} catch {console.error('타이머 저장 오류: TIMER_TICK_FAILED');}
+        try {schedules?.tick();} catch {console.error('알람 저장 오류: SCHEDULE_TICK_FAILED');}
+        try {
+          joined.sync();
+          for (const notice of results.tick()) followNotices.notify(notice,outcome=>results.delivery(notice,notice.round,outcome));
+        } catch {console.error('재알림 저장 오류: FOLLOWUP_TICK_FAILED');}
+        refreshAll();
+      };
+      const interval=setInterval(tick,500);
+      const resume=()=>{try {timerService.resume();} catch {console.error('타이머 복원 오류: TIMER_RESUME_FAILED');} tick();};
+      const suspend=()=>timerService.suspend();
+      powerMonitor.on('suspend',suspend); powerMonitor.on('resume',resume);
+      cleanupTimers=()=>{
+        clearInterval(interval); powerMonitor.removeListener('suspend',suspend); powerMonitor.removeListener('resume',resume);
+        notifications.dispose(); scheduleNotices.dispose(); followNotices.dispose();
+        panels?.dispose();cardWindow?.dispose();timerService.dispose();schedules?.dispose();results.dispose();
+      };
+      tick();
+    } else cleanupTimers=()=>{notifications.dispose();scheduleNotices.dispose();followNotices.dispose();};
     if (show) {
       tray = new Tray(nativeImage.createEmpty());
+      let previousMenu = '';
       refreshTray = () => {
         const label = state.name ?? (hatching ? '부화 준비' : '알');
-        tray!.setTitle(label);
+        const displayed = service ? selectMenuTimer(service.views()) : null;
+        tray!.setTitle(displayed ? formatMenuTimer(displayed) : label);
         tray!.setToolTip(`Jarvis Pet · ${label}`);
+        const menuKey=JSON.stringify([label,hatching,lifecycle.read().completed,Boolean(panels)]);
+        if(menuKey===previousMenu)return;
+        previousMenu=menuKey;
         tray!.setContextMenu(Menu.buildFromTemplate([
           { label: `Jarvis Pet · ${label}`, enabled: false },
           { label: hatching ? (lifecycle.read().completed === null ? '부화 함께 보기' : '첫 만남 이어보기') : '펫을 처음 위치로', click: hatching ? openHatch : reset },

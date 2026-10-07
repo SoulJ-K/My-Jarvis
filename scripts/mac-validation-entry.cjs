@@ -15,6 +15,12 @@ startJarvis({
   onReady: async win => {
     try {
       assert.equal(app.isPackaged, true);
+      const dockNative = require('./dist/native/jarvis-dock-snack.node');
+      assert.equal(dockNative.selfTest(), true);
+      const dockToken = dockNative.attach(win.getNativeWindowHandle());
+      assert(Number.isSafeInteger(dockToken) && dockToken > 0);
+      dockNative.dispose(dockToken);
+      console.log('PASS: packaged in-process Dock module load, pure self-test, attach/dispose');
       assert.equal(app.getPath('userData'), directory);
       assert.equal(win.isVisible(), false);
       assert.equal(win.isFocusable(), false);

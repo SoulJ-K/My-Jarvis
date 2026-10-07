@@ -7,6 +7,7 @@ import { TimerRepository } from '../src/storage/timer-repository';
 import { TimerService } from '../src/assistant/timer';
 import { ScheduleRepository } from '../src/storage/schedule-repository';
 import { ReminderService } from '../src/assistant/reminders';
+import { createAssistantFixture } from './assistant-fixture';
 import { createPromptWindows } from '../src/main/prompt-window';
 
 const directory = mkdtempSync(path.join(tmpdir(),'jarvis-schedule-smoke-'));
@@ -22,11 +23,14 @@ app.whenReady().then(async () => {
   const register = ipcMain.handle.bind(ipcMain);
   let previewHandler!: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
   let previewEvent!: IpcMainInvokeEvent;
+  let previewRequests = 0;
   ipcMain.handle = (channel,listener) => {
-    if (channel === 'schedule:preview') { previewHandler = listener; register(channel,(event,...args) => { previewEvent = event; return listener(event,...args); }); }
+    if (channel === 'schedule:preview') { previewHandler = listener; register(channel,(event,...args) => { previewEvent = event; previewRequests++; return listener(event,...args); }); }
     else register(channel,listener);
   };
-  panels = await createPromptWindows(timer,true,schedules); ipcMain.handle = register;
+  const fixture = createAssistantFixture(directory, timer, schedules, () => now, () => panels?.refresh());
+  panels = await createPromptWindows(timer,true,schedules,undefined,fixture.assistant);
+  await fixture.loadCard(); ipcMain.handle = register;
   const run = (code: string) => panels.prompt.webContents.executeJavaScript(code);
   const settle = () => run('new Promise(resolve => setTimeout(resolve, 80))');
   const input = (text: string) => run(`(() => { const el=document.querySelector('#request'); el.value=${JSON.stringify(text)}; el.dispatchEvent(new Event('input')); document.querySelector('#timer-form').requestSubmit(); })()`);
@@ -45,7 +49,8 @@ app.whenReady().then(async () => {
   assert.equal((await run(`window.schedulePanel.confirm(${JSON.stringify(staleId)})`)).ok,false);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
   assert.equal(timer.views().length,1); assert.equal(schedules.views().length,0);
-  await run('document.querySelector("#timers button").click()'); await settle();
+  await run(`Array.from(document.querySelectorAll('#timers button')).find(button => button.textContent === '취소').click()`); await settle();
+  assert.equal(timer.views().length,0,'select cancellation by label, not the new pause button');
   await input('내일 3시 알람'); await settle();
   assert.match(await run('document.querySelector("#result").textContent'),/오전·오후/);
   assert.equal(schedules.views().length,0);
@@ -57,7 +62,7 @@ app.whenReady().then(async () => {
   assert.match(await run('document.querySelector("#schedule-summary").textContent'), /2026-09-27 15:00/);
   await run('document.querySelector("#schedule-confirm").click()'); await settle();
   assert.equal(schedules.views().length, 1);
-  await run('document.querySelector("#schedules button").click()'); await settle();
+  await run(`Array.from(document.querySelectorAll('#timers button')).find(button => button.textContent === '취소').click()`); await settle();
   assert.equal(schedules.views().length, 0);
   now = new Date(2026,8,26,14).getTime();
   for (const request of ['오늘 여섯시 반에 퇴실체크 알람해줘', '오늘 18:30분에 퇴실체크 알람해줘']) {
@@ -68,14 +73,18 @@ app.whenReady().then(async () => {
   }
   now = new Date(2026,8,26,9).getTime();
   await run('document.querySelector("#request").dispatchEvent(new Event("input"))');
-  await run(`(() => { const el=document.querySelector('#request'); el.value='오늘 10:00 알람'; el.dispatchEvent(new CompositionEvent('compositionstart')); document.querySelector('#timer-form').requestSubmit(); })()`);
+  const previewsBeforeComposition = previewRequests;
+  await run(`(() => { const el=document.querySelector('#request'); el.value='오늘 10:00 알람';
+    el.dispatchEvent(new CompositionEvent('compositionstart'));
+    el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));
+    document.querySelector('#timer-form').requestSubmit(); })()`);
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
-  await run(`document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionend')); document.querySelector('#timer-form').requestSubmit()`);
-  assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
-  await run(`(() => { const button=document.querySelector('#submit'); button.dispatchEvent(new PointerEvent('pointerdown'));
-    document.querySelector('#timer-form').requestSubmit(button); })()`);
+  assert.equal(previewRequests,previewsBeforeComposition,'composition must not preview unfinished text');
+  await run(`document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionend'));`);
   await settle();
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),false);
+  assert.equal(previewRequests,previewsBeforeComposition+1,'composition Enter previews once after commit');
+  assert.equal(schedules.views().length,0,'IME submission still needs explicit confirmation before storage');
   await run('document.querySelector("#schedule-edit").click()');
   await run('new Promise(resolve => setTimeout(resolve,120))');
   await input('오늘 10:00 리마인더 서류 확인'); await settle();
@@ -111,6 +120,9 @@ app.whenReady().then(async () => {
   await foreign.loadFile(path.join(__dirname,'../src/renderer/prompt.html'));
   assert.equal(await foreign.webContents.executeJavaScript("window.schedulePanel.preview('x','오늘 10:00 알람').then(()=>false,()=>true)"),true);
   for (const method of ['confirm','cancel','acknowledge']) assert.equal(await panels.notice.webContents.executeJavaScript(`window.schedulePanel.${method}('x').then(()=>false,()=>true)`),true);
+  assert.equal(await foreign.webContents.executeJavaScript("window.assistantPanel.action({type:'cancel',kind:'reminder',id:'x'}).then(()=>false,()=>true)"),true);
+  assert.equal(await panels.notice.webContents.executeJavaScript("window.assistantPanel.read().then(()=>false,()=>true)"),true);
+  assert.equal(await fixture.card.webContents.executeJavaScript("window.assistantPanel.action({type:'ack',kind:'reminder',id:'x'}).then(()=>false,()=>true)"),true);
   foreign.destroy();
   // Editing clears the previous server-side preview, closing never cancels a committed row.
   await input('내일 11:00 알람'); await settle();
@@ -118,25 +130,25 @@ app.whenReady().then(async () => {
   assert.equal(await run('document.querySelector("#schedule-confirmation").hidden'),true);
   await run('window.timerPanel.close()'); await settle(); assert.equal(schedules.views().length,1);
   assert.equal(await run('document.querySelector("#request").value'),'');
-  // A late deadline shows an inactive app notice and retains failure detail in the inbox.
+  // A late deadline keeps failure detail in the inbox without opening an automatic app notice.
   const typing = new BrowserWindow({show:true,width:300,height:150}); await typing.loadURL('data:text/html,<input autofocus>'); typing.focus(); await settle();
   const focused = BrowserWindow.getFocusedWindow(); now += 3605000; schedules.tick(); await settle();
-  assert.equal(panels.prompt.isVisible(),false); assert.equal(panels.notice.isVisible(),true);
-  assert.equal(BrowserWindow.getFocusedWindow(),focused); assert.equal(schedules.views()[0].appDisplayed,true);
+  assert.equal(panels.prompt.isVisible(),false); assert.equal(panels.notice.isVisible(),false);
+  assert.equal(BrowserWindow.getFocusedWindow(),focused); assert.equal(schedules.views()[0].appDisplayed,false);
   assert.equal(schedules.views()[0].reason,'late'); assert.equal(schedules.views()[0].systemDelivery,'failed');
-  assert.match(await panels.notice.webContents.executeJavaScript('document.querySelector("#notice-content").textContent'),/서류 확인/);
   panels.open(); await settle();
   assert.match(await run('document.querySelector("#schedules").textContent'),/시스템 알림 실패/);
-  assert.match(await run('document.querySelector("#schedules").textContent'),/늦게 확인됨/);
+  assert.match(await run('document.querySelector("#schedules").textContent'),/서류 확인/);
+  assert.match(await run('document.querySelector("#schedules").textContent'),/시간 지남 · 미확인/);
   panels.prompt.setSize(380,610); await settle();
   assert.equal(await run('document.documentElement.scrollWidth <= innerWidth'),true);
   const listImage = path.join(tmpdir(),'jarvis-schedule-list.png');
   await run('document.querySelector("#schedules").scrollIntoView({block:"center"})');
   await settle();
   writeFileSync(listImage,(await panels.prompt.webContents.capturePage()).toPNG());
-  await run('document.querySelector("#schedules button").click()'); await settle(); assert.equal(schedules.views().length,0);
+  await run(`Array.from(document.querySelectorAll('#schedules button')).find(button => button.textContent === '알림 확인').click()`); await settle(); assert.equal(schedules.views().length,0);
   await input('내일 11:00 알람'); await settle(); await run('document.querySelector("#schedule-confirm").click()'); await settle();
-  await run('document.querySelector("#schedules button").click()'); await settle(); assert.equal(schedules.views().length,0);
+  await run(`Array.from(document.querySelectorAll('#timers button')).find(button => button.textContent === '취소').click()`); await settle(); assert.equal(schedules.views().length,0);
   // A schedule read failure must not abort the timer's durable registration or delivery.
   const originalRead = scheduleStore.all.bind(scheduleStore);
   scheduleStore.all = () => { throw new Error('simulated schedule read failure'); };
@@ -145,7 +157,7 @@ app.whenReady().then(async () => {
   now += 300000; timer.tick(); assert.equal(timer.views()[0].systemDelivery,'failed');
   scheduleStore.all = originalRead;
   await settle(); // Drain queued UI reads before removing IPC handlers.
-  console.log('PASS: schedule preview/confirmation, Korean composition guard, sender/argument validation, edit/close, cancellation, inactive notice, failure inbox, narrow layout and timer coexistence');
+  console.log('PASS: schedule preview/confirmation, Korean composition guard, sender/argument validation, edit/close, cancellation, no automatic notice, failure inbox, narrow layout and timer coexistence');
   console.log('SCREENSHOTS:'+previewImage+','+listImage);
-  typing.destroy(); panels.dispose(); timer.dispose(); schedules.dispose(); clearTimeout(timeout); rmSync(directory,{recursive:true,force:true}); app.quit();
+  typing.destroy(); panels.dispose(); fixture.dispose(); timer.dispose(); schedules.dispose(); clearTimeout(timeout); rmSync(directory,{recursive:true,force:true}); app.quit();
 }).catch(error => { console.error(error); clearTimeout(timeout); app.exit(1); });

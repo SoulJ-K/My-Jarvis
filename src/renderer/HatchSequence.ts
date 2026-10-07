@@ -22,6 +22,7 @@ namespace JarvisHatch {
     private hostAvailable = false;
     private namePrompt?: NamePrompt;
     private nameDraft = '';
+    private art?: HTMLElement;
     private sceneTimer?: ReturnType<typeof setTimeout>;
     private readonly onVisibility = () => { void this.refresh(this.hostAvailable && !document.hidden).catch(() => this.showReadError()); };
     constructor(private readonly root: HTMLElement, private readonly transport: Transport,
@@ -53,7 +54,8 @@ namespace JarvisHatch {
     }
     private render(): void {
       if (!this.active || !this.state || this.disposed) return;
-      this.namePrompt?.dispose(); this.root.replaceChildren();
+      this.namePrompt?.dispose();
+      for (const child of [...this.root.children]) if (child !== this.art) child.remove();
       const state = this.state;
       const sceneIndex = state.completed === null ? 0 : scenes.indexOf(state.completed) + 1;
       const step = !state.ready ? 'egg' : state.name !== null ? 'life'
@@ -61,16 +63,20 @@ namespace JarvisHatch {
       this.root.dataset.step = step;
       this.root.dataset.petId = state.petId;
       this.root.dataset.orbId = state.orbId ?? '';
-      const scene = document.createElement('div'); scene.className = 'hatch-art';
+      const scene = this.art ?? document.createElement('div'); scene.className = 'hatch-art';
       scene.setAttribute('aria-hidden', 'true');
       // CSS art follows the chosen starry shell and the current baby silhouette.
-      for (const part of ['egg', 'crack', 'orb', 'shell-left', 'shell-right', 'baby']) {
+      if (!this.art) for (const part of ['egg', 'crack', 'orb', 'shell-left', 'shell-right', 'baby']) {
         const element = document.createElement('span'); element.className = `hatch-${part}`; scene.append(element);
       }
+      this.art = scene;
+      // UUID-derived random side stays fixed through save retries and reloads.
+      this.root.dataset.orbSide = [...(state.orbId ?? state.petId)].reduce((n, c) => n + c.charCodeAt(0), 0) % 2 ? 'left' : 'right';
       const caption = document.createElement('p'); caption.setAttribute('role', 'status');
       caption.textContent = step === 'egg' ? '' : step === 'life' ? `${state.name}, 반가워요.`
         : step === 'naming' ? '첫 인사를 나눴어요.' : descriptions[step];
-      this.root.append(scene, caption);
+      if (scene.parentElement !== this.root) this.root.prepend(scene);
+      this.root.append(caption);
       if (step === 'egg' || step === 'life') return;
       if (step === 'naming') {
         const generation = this.generation;
@@ -103,7 +109,7 @@ namespace JarvisHatch {
       button.addEventListener('click', advance);
       button.hidden = this.auto;
       this.root.append(button, error);
-      if (this.auto) this.sceneTimer = setTimeout(advance, 1100);
+      if (this.auto) this.sceneTimer = setTimeout(advance, ({ prelude: 1500, crack: 1500, orb: 1700, shell: 1600, baby: 2200, contact: 1700 })[step]);
       else button.focus();
     }
     dispose(): void {

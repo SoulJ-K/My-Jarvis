@@ -1,4 +1,4 @@
-import { BABY_STAGE, babyApproachDuration, babyDayPeriod, babyTargetForFood, validFoodPoint,
+import { BABY_STAGE, babyApproachDuration, babyDayPeriod, babyTargetForFood, validFoodPoint, babyBodyInset, layoutBabyAt, BabyAttentionMotion,
   type BabyPosition } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
@@ -8,11 +8,18 @@ import { pathToFileURL } from 'node:url';
 import type { EggSnapshot } from '../shared/pet';
 import { EggGesture } from './egg-gesture';
 import type { EggCareKind } from '../pet/egg-life';
+import { DockSnackController, dockSnackHelperPath, type DockSnackDiagnostic } from './dock-snack';
 import { BabyReturnBrain, EggBrain } from '../pet/brain';
 
 const WIDTH = 180;
 const HEIGHT = 200;
 const DIAGNOSTIC_LIMIT = 16 * 1024;
+const babyFrames = new WeakMap<BrowserWindow, () => import('../pet/baby-life').BabyPresentation | null>();
+const babyAnchors = new WeakMap<BrowserWindow, () => Electron.Rectangle>();
+/** Main-owned card modules can position against the painted body without duplicating its layout. */
+export function babyScreenBounds(win: BrowserWindow): Electron.Rectangle | null { return babyAnchors.get(win)?.() ?? null; }
+/** Use after social commands or attention updates: a repository view alone lacks window placement. */
+export function refreshBabyPresentation(win: BrowserWindow) { return babyFrames.get(win)?.() ?? null; }
 const babyPlacement = new WeakMap<BrowserWindow, (position: BabyPosition) => void>();
 
 /** Keep the first living frame at the exact on-screen location of the hatch art. */
@@ -57,7 +64,7 @@ export function initialPosition(stage: 'egg' | 'baby' = 'egg') {
 
 export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
   currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository,
-  onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true) {
+  onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true, onDockSnack?: () => Promise<unknown>, previousBabyObservation?: number | null, onDockDiagnostic?: (info: DockSnackDiagnostic) => void) {
   const page = path.join(__dirname, '../renderer/index.html');
   const initialSize = stageSize(pet.stage);
   const win = new BrowserWindow({
@@ -86,7 +93,60 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('pet:state', state);
   });
 
+  const dock = onDockSnack ? new DockSnackController({helperPath:dockSnackHelperPath(app.getAppPath()),onDiagnostic:onDockDiagnostic,nativeHandle:win.getNativeWindowHandle()}) : undefined;
+  let nativePending = false;
+  let nativeAttempted = false;
+  let nativeStarted = false;
+  const beginNativeDrag = async () => {
+    if (!dock || nativePending || nativeAttempted || !drag) return;
+    nativeAttempted = true; nativePending = true;
+    recordPetDiagnostic('dock_drag_requested');
+    const bounds = win.getBounds();
+    const cursor = screen.getCursorScreenPoint();
+    const anchor = visibleAnchor();
+    const bodyOffset = {x:cursor.x-anchor.x,y:cursor.y-anchor.y};
+    const wasVisible = win.isVisible();
+    try {
+      const image = await win.webContents.capturePage();
+      if (!drag || win.isDestroyed()) return;
+      const result = await dock.start({imagePNGBase64:image.toPNG().toString('base64'),width:bounds.width,height:bounds.height,
+        hotSpotX:cursor.x-bounds.x,hotSpotY:cursor.y-bounds.y}, () => {
+        nativeStarted = true; clearArm();
+        recordPetDiagnostic('dock_drag_started');
+        win.webContents.send('pet:native-drag-reset');
+        // AppKit owns temporary opacity and restores it even before JS callbacks run.
+      });
+      if (win.isDestroyed()) return;
+      if ('reason' in result) recordPetDiagnostic('dock_drag_' + result.reason);
+      if ('screenPoint' in result) {
+        if (result.kind === 'cancelled') {
+          placeVisible({x:result.screenPoint.x-bodyOffset.x,y:result.screenPoint.y-bodyOffset.y});
+          const movedHome=visibleAnchor(); baby!.setHome(movedHome); home=movedHome;
+        }
+        recordPetDiagnostic(result.kind === 'snack-requested' ? 'dock_snack_requested' : 'dock_drag_cancelled');
+      }
+      // Restore before opening the normal, explicit selection/confirmation flow.
+      if (nativeStarted) {
+        cancelGesture(); win.webContents.send('pet:native-drag-reset');
+        if(wasVisible) win.showInactive();
+      }
+      if(nativeStarted && lastBabyView) publishBaby(lastBabyView);
+      nativePending=false; nativeStarted=false;
+      if (result.kind === 'snack-requested') void onDockSnack?.().catch(()=>{
+        if(!win.isDestroyed()) win.webContents.send('baby:save-failed');
+      });
+    } catch { if(!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
+    finally {
+      if(!win.isDestroyed() && nativeStarted) {
+        cancelGesture(); win.webContents.send('pet:native-drag-reset');
+        if(wasVisible) win.showInactive();
+        if(lastBabyView) publishBaby(lastBabyView);
+      }
+      nativePending=false; nativeStarted=false;
+    }
+  };
   let drag: EggGesture | undefined;
+  let dragAnchor: BabyPosition | undefined;
   let armTimer: ReturnType<typeof setTimeout> | undefined;
   let strokeSampler: ReturnType<typeof setInterval> | undefined;
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -106,7 +166,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   };
   const cancelGesture = () => {
     clearArm();
-    drag = undefined;
+    drag = undefined; dragAnchor = undefined;
     setInteractive(false);
   };
   // A new document has no pointer capture; do not leave the old gesture active.
@@ -116,6 +176,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     if (drag) cancelGesture();
     const bounds = win.getBounds();
     const area = screen.getDisplayMatching(bounds).workArea;
+    if (babyReady()) { restoreHome(); if (lastBabyView) publishBaby(lastBabyView); return; }
     const position = clampPosition(bounds, area, bounds);
     if (position.x !== bounds.x || position.y !== bounds.y) {
       win.setPosition(position.x, position.y, false);
@@ -130,23 +191,33 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     event.senderFrame?.url === pathToFileURL(page).href;
 
   const hover = (event: IpcMainEvent, interactive: unknown) => {
-    if (validSender(event) && typeof interactive === 'boolean' && !drag) setInteractive(interactive);
+    if (!attentionAct && validSender(event) && typeof interactive === 'boolean' && !drag) setInteractive(interactive);
   };
   const moveCursor = () => {
-    if (!drag) return;
+    if (!drag || nativePending) return;
     // Read OS coordinates in the main process; the page cannot send arbitrary positions.
     const cursor = screen.getCursorScreenPoint();
     const dx = cursor.x - drag.cursor.x;
     const dy = cursor.y - drag.cursor.y;
     drag.move(cursor, performance.now());
     if (!drag.moved || drag.stroking) return;
+    if(babyReady() && dock && !nativeAttempted) { void beginNativeDrag(); return; }
     const area = screen.getDisplayNearestPoint(cursor).workArea;
-    const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area, win.getBounds());
-    win.setPosition(position.x, position.y, false);
+    if (babyReady() && dragAnchor) {
+      placeVisible({ x: dragAnchor.x + dx, y: dragAnchor.y + dy }, area);
+      publishBaby(baby!.view(baby!.read()!));
+    } else {
+      const position = clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, area, win.getBounds());
+      win.setPosition(position.x, position.y, false);
+    }
   };
   const start = (event: IpcMainEvent, ...args: unknown[]) => {
-    if (!validSender(event) || args.length !== 0 || drag) return;
+    if (!validSender(event) || args.length !== 0 || drag || nativePending) return;
+    nativeAttempted=false;
     const [x, y] = win.getPosition();
+    dragAnchor = babyReady() ? visibleAnchor() : undefined;
+    if (babyReady() && lastBabyView?.meal) draggedMealId = lastBabyView.meal.id;
+    attentionAct = null;
     drag = new EggGesture(screen.getCursorScreenPoint(), { x, y }, performance.now(), currentPet().stage === 'egg');
     armTimer = setTimeout(() => {
       if (currentPet().stage === 'egg' && drag?.arm(performance.now())) {
@@ -164,12 +235,20 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   };
   const end = (event: IpcMainInvokeEvent) => {
     if (!validSender(event)) return true;
-    move(event);
+    if(nativeStarted) return true;
+    if(nativePending) { nativePending=false; move(event); nativePending=true; }
+    else move(event);
     clearArm();
     const moved = drag?.moved ?? true;
     const kind = drag?.finish();
+    if (moved && dragAnchor && babyReady()) {
+      const movedHome = visibleAnchor();
+      try { baby!.setHome(movedHome); home = movedHome; } catch { win.webContents.send('baby:save-failed'); }
+    }
+    dragAnchor = undefined;
     drag = undefined;
     setInteractive(false);
+    if (babyReady() && lastBabyView) publishBaby(lastBabyView);
     if (kind && currentPet().stage === 'egg' && brain.snapshot().behavior === 'idle') {
       try {
         care(kind); // Commit before acknowledging; failures cannot look like saved care.
@@ -186,24 +265,55 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     return moved;
   };
   const cancel = (event: IpcMainEvent) => {
-    if (!validSender(event)) return;
+    if (!validSender(event) || nativeStarted) return;
     cancelGesture();
   };
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
   let babyPosition: BabyPosition = { x: BABY_STAGE.startX, y: BABY_STAGE.startY };
-  babyPlacement.set(win, position => { babyPosition = position; });
+  let attentionAct: 'bottom' | 'cursor' | null = null;
+  let reducedMotion = false;
+  let attentionLevel: 0 | 1 | 2 = 0;
+  let home = baby?.readHome() ?? null;
+  const attentionMotion = new BabyAttentionMotion();
+  const visibleAnchor = (): BabyPosition => {
+    const bounds = win.getBounds(); const inset = babyBodyInset(attentionLevel);
+    return { x: bounds.x + babyPosition.x + inset.x, y: bounds.y + babyPosition.y + inset.y };
+  };
+  const placeVisible = (anchor: BabyPosition, area = screen.getDisplayNearestPoint(anchor).workArea) => {
+    const layout = layoutBabyAt(anchor, area, attentionLevel);
+    babyPosition = layout.position;
+    win.setPosition(layout.window.x, layout.window.y, false);
+  };
+  const restoreHome = () => { if (home) placeVisible(home); };
+  babyPlacement.set(win, position => {
+    babyPosition = position; home = visibleAnchor();
+    if (babyReady()) {
+      try { baby!.setHome(home); } catch { win.webContents.send('baby:save-failed'); }
+    }
+  });
+  babyAnchors.set(win, () => {
+    const anchor = visibleAnchor(); const inset = babyBodyInset(attentionLevel);
+    return { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.ceil(inset.width), height: Math.ceil(inset.height) };
+  });
+  if (pet.stage === 'baby' && home) restoreHome();
   let activeMealTarget: BabyPosition | null = null;
+  let draggedMealId: string | null = null;
+  let lastBabyView: ReturnType<BabyLifeRepository['view']> | null = null;
   // Capture the saved observation before the first page read advances life.
-  const returnBrain = new BabyReturnBrain(baby?.read()?.observedAtMs ?? null);
+  const returnBrain = new BabyReturnBrain(previousBabyObservation === undefined ? baby?.read()?.observedAtMs ?? null : previousBabyObservation);
   const publishBaby = (view: ReturnType<BabyLifeRepository['view']>) => {
-    if (view.meal) activeMealTarget = babyTargetForFood(view.meal.x, view.meal.y);
-    else if (activeMealTarget) { babyPosition = activeMealTarget; activeMealTarget = null; }
+    lastBabyView = view;
+    if (view.meal) activeMealTarget = view.meal.kind === 'snack' || view.meal.id === draggedMealId ? babyPosition : babyTargetForFood(view.meal.x, view.meal.y);
+    else if (activeMealTarget) { babyPosition = activeMealTarget; activeMealTarget = null; draggedMealId = null; }
     const reunion = returnBrain.observe(Date.now(), win.isVisible() && !win.isMinimized() && !socialSuspended && !socialLocked,
       powerMonitor.getSystemIdleTime() * 1000);
-    const presentation = { ...view, position: babyPosition, reunion };
+    const presentation = { ...view,
+      meal: view.meal && (view.meal.kind === 'snack' || view.meal.id === draggedMealId) ? { ...view.meal, x: babyPosition.x + 66, y: babyPosition.y + 63 } : view.meal,
+      position: babyPosition, reunion, attentionAct, dragging: Boolean(drag?.moved) };
     if (!win.isDestroyed()) win.webContents.send('baby:state', presentation);
     return presentation;
   };
+  babyFrames.set(win, () => babyReady() ? publishBaby(baby!.view(baby!.read()!)) : null);
   let socialSuspended = false;
   let socialLocked = false;
   const suspendSocial = () => { recordPetDiagnostic('system_suspended'); socialSuspended = true; tickBaby(); };
@@ -234,6 +344,38 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     }
     catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
   };
+  let lastMotionAt = performance.now();
+  const motionTimer = setInterval(() => {
+    if (!babyReady() || win.isDestroyed()) return;
+    try {
+      const view = lastBabyView; if (!view) return;
+      const now = performance.now(); const dt = Math.min(100, now - lastMotionAt); lastMotionAt = now;
+      const suppressed = Boolean(reducedMotion || drag || socialSuspended || socialLocked || !win.isVisible() || win.isMinimized() || view.meal ||
+        powerMonitor.getSystemIdleTime() > 120);
+      const acting = attentionMotion.step(now, view.attention, suppressed);
+      const previous = attentionAct;
+      const changedLevel = attentionLevel !== view.attention.level;
+      attentionLevel = view.attention.level;
+      attentionAct = acting ? view.attention.preference : null;
+      if (!home) home = visibleAnchor();
+      if (acting) {
+        // Never steal a click or activate another app while crossing its content.
+        setInteractive(false);
+        const cursor = screen.getCursorScreenPoint();
+        const area = screen.getDisplayNearestPoint(attentionAct === 'cursor' ? cursor : home).workArea;
+        const inset = babyBodyInset(attentionLevel);
+        const target = attentionAct === 'bottom'
+          ? { x: home.x, y: area.y + area.height - inset.height }
+          : { x: cursor.x + (cursor.x + 160 < area.x + area.width ? 90 : -160), y: cursor.y + 50 };
+        const current = visibleAnchor();
+        win.webContents.send('baby:direction', cursor.x < current.x + inset.width / 2 ? 'left' : 'right');
+        const distance = Math.hypot(target.x - current.x, target.y - current.y);
+        const fraction = Math.min(1, dt * .65 / Math.max(1, distance));
+        placeVisible({ x: current.x + (target.x - current.x) * fraction, y: current.y + (target.y - current.y) * fraction }, area);
+      } else if (!drag && (previous || changedLevel)) restoreHome();
+      if (acting || previous || changedLevel) publishBaby(view);
+    } catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
+  }, 50);
   const babyTimer = setInterval(tickBaby, 1000);
   win.on('hide', () => { recordPetDiagnostic('pet_window_hidden'); tickBaby(); });
   win.on('show', () => recordPetDiagnostic('pet_window_shown'));
@@ -249,6 +391,10 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     const approachMs = babyApproachDuration(babyPosition, x as number, y as number);
     return publishBaby(baby!.view(baby!.apply({ type: 'feed', offerId, x: x as number, y: y as number, approachMs })));
   });
+  const motionPreference = (event: IpcMainEvent, value: unknown) => {
+    if (validSender(event) && typeof value === 'boolean') reducedMotion = value;
+  };
+  ipcMain.on('baby:reduced-motion', motionPreference);
   ipcMain.on('egg:hover', hover);
   ipcMain.on('egg:drag-start', start);
   ipcMain.on('egg:drag-move', move);
@@ -263,11 +409,13 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     return currentPet();
   });
   win.on('closed', () => {
-    babyPlacement.delete(win);
+    dock?.dispose();
+    babyPlacement.delete(win); babyFrames.delete(win); babyAnchors.delete(win);
+    ipcMain.removeListener('baby:reduced-motion', motionPreference);
     recordPetDiagnostic('pet_window_closed');
     clearTimeout(recoveryTimer);
     clearTimeout(healthyTimer);
-    clearInterval(babyTimer);
+    clearInterval(babyTimer); clearInterval(motionTimer);
     powerMonitor.removeListener('suspend', suspendSocial); powerMonitor.removeListener('lock-screen', lockSocial);
     powerMonitor.removeListener('resume', resumeSocial); powerMonitor.removeListener('unlock-screen', unlockSocial);
     ipcMain.removeHandler('baby:read');

@@ -32,3 +32,15 @@ contextBridge.exposeInMainWorld('schedulePanel', {
     return () => ipcRenderer.removeListener('schedule:changed', listener);
   },
 });
+
+contextBridge.exposeInMainWorld('assistantPanel', {
+  read: () => ipcRenderer.invoke('assistant:read'),
+  action: (action: import('../shared/assistant-panel').PanelAction) => ipcRenderer.invoke('assistant:action', action),
+  submitTimer: (id: string, input: string, mode: import('../shared/assistant-panel').TimerMenu, replace = false) =>
+    ipcRenderer.invoke('assistant:submit-timer', id, input, mode, replace),
+  snack: () => ipcRenderer.invoke('assistant:snack'),
+  subscribe: (listener: () => void) => {
+    ipcRenderer.on('assistant:changed', listener);
+    return () => ipcRenderer.removeListener('assistant:changed', listener);
+  },
+});

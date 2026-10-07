@@ -1,0 +1,10 @@
+body.result-card { background:transparent; }
+.result-card main { padding:16px; margin:5px; border:1px solid var(--line); border-radius:18px; background:var(--paper); box-shadow:0 3px 12px #0002; }
+.result-card h1 { font-size:18px; margin:4px 0; }
+.result-card p { margin:3px 0; }
+.result-card .actions { margin-top:10px; }
+.result-card #card-result { font-size:13px; }
+.result-card summary { font-size:12px; min-height:24px; margin-top:8px; cursor:pointer; }
+.result-card label { margin:8px 0 3px; font-size:13px; }
+.custom-delay { display:flex; gap:8px; }
+.custom-delay input { min-width:0; }
