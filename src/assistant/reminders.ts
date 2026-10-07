@@ -17,6 +17,7 @@ export class ReminderService {
       if (row.status === 'pending' && row.dueAt <= wall) store.due(row.id, 'recovered');
     }
   }
+  records(): ScheduleRecord[] { return this.store.all(); }
   views(): ScheduleRecord[] { return this.store.all().filter(row => row.status === 'pending' || row.status === 'due'); }
   preview(id: unknown, input: unknown): SchedulePreview {
     this.discard();
@@ -41,7 +42,7 @@ export class ReminderService {
   cancel(id: string): ScheduleReply {
     this.tick();
     const ok = this.store.cancel(id); this.changed();
-    return { ok, message: ok ? '알림을 취소했습니다.' : '이미 시각이 지났거나 취소한 알림입니다. 목록을 확인해 주세요.' };
+    return { ok, message: ok ? '알림을 취소했습니다.' : '이미 취소한 알림입니다. 목록을 확인해 주세요.' };
   }
   acknowledge(id: string): void { this.store.acknowledge(id); this.changed(); }
   displayed(id: string): void { this.store.displayed(id); }

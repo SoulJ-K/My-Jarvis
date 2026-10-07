@@ -17,3 +17,9 @@ button:hover { filter:brightness(.93); } button:active { filter:brightness(.84);
 input[aria-invalid="true"] { border-color:#9a3024; }
 
 #notice-content { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+select { width:100%; min-height:44px; padding:8px; font:inherit; color:var(--ink); background:white; border:1px solid var(--line); border-radius:10px; }
+.past-section { border-top:1px solid var(--line); margin-top:24px; padding-top:1px; }
+.timer { border:0; border-radius:0; background:transparent; padding:12px 0; margin:0; border-bottom:1px solid var(--line); }
+.timer .actions { gap:8px; } .timer .actions button { padding:8px 12px; }
+.timer .remaining { font-variant-numeric:tabular-nums; }

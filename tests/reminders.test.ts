@@ -154,9 +154,9 @@ test('confirmation retries create one row; two distinct requests can coexist and
   assert.equal(f.service.views().length,1); assert.equal(f.service.views()[0].id,'b');
   assert.equal(f.service.confirm('a').ok,false); assert.equal(f.service.preview('a','내일 10:00 알람').ok,false);
 });
-test('due deadline wins over cancellation, records failed delivery once, and retains until acknowledgement', t => {
+test('due deadline records failed delivery once and retains until acknowledgement', t => {
   const f = fixture(t); f.register(); f.advance(3600000);
-  assert.equal(f.service.cancel('a').ok,false); f.service.tick();
+  f.service.tick();
   assert.equal(f.deliveries,1); assert.equal(f.service.views()[0].systemDelivery,'failed');
   assert.equal(f.service.views()[0].reason,'on-time'); assert.equal(f.service.views()[0].appDisplayed,false);
   f.service.displayed('a'); f.restart(); assert.equal(f.service.views()[0].appDisplayed,true);
@@ -210,4 +210,12 @@ test('invalid schedule storage is preserved and pet/timer data are untouched', t
   writeFileSync(scheduleDatabasePath(bad),'preserve this');
   assert.throws(() => new ScheduleRepository(bad),/SCHEDULE_STORAGE_INVALID/);
   assert.equal(readFileSync(scheduleDatabasePath(bad),'utf8'),'preserve this');
+});
+test('past and acknowledged schedules can be cancelled without claiming completion or deleting delivery facts', t => {
+  const f = fixture(t); f.register(); f.advance(3600000); f.service.tick();
+  assert.equal(f.service.cancel('a').ok, true); f.restart();
+  assert.equal(f.service.records()[0].status, 'cancelled');
+  assert.equal(f.service.records()[0].systemDelivery, 'failed');
+  f.register('b', '내일 10:00 알람'); f.advance(86400000); f.service.tick(); f.service.acknowledge('b');
+  assert.equal(f.service.cancel('b').ok, true); assert.deepEqual(f.service.views(), []);
 });

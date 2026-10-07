@@ -116,6 +116,10 @@ export async function createHatchWindow(store: LifecycleRepository, win: Browser
   return { win, dispose, open() {
     const state = store.read();
     if (!show || disposed || locked || suspended || !state.ready || state.name !== null) return false;
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    win.setPosition(Math.round(area.x + (area.width - bounds.width) / 2),
+      Math.round(area.y + (area.height - bounds.height) / 2), false);
     if (expandedScene(state)) expand();
     active = true;
     if (state.completed === 'contact') {

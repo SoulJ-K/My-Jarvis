@@ -1,12 +1,14 @@
 import { advanceBabySocial, initialBabySocial, socialView, validateBabySocial, type BabySocial, type SocialCommand } from '../pet/baby-social';
 import { constants, copyFileSync, lstatSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { advanceBabyLife, babyView, cycle, initialBabyLife, validateBabyLife, type BabyLife, type BabyCommand } from '../pet/baby-life';
+import { advanceBabyLife, babyView, cycle, initialBabyLife, validateBabyLife, validateAttention, canStartMeal, QUIET_ATTENTION, type BabyAttention, type BabyPosition, type BabyLife, type BabyCommand } from '../pet/baby-life';
 import { loadOrCreateEgg, petDatabasePath } from './pet-repository';
 
 /** Same pet DB: identity remains unchanged. State and experiences commit together. */
 export class BabyLifeRepository {
   private readonly db: DatabaseSync;
+  private attention: BabyAttention = { ...QUIET_ATTENTION };
+  private attentionInitialized = false;
   constructor(directory: string, private readonly now: () => number = Date.now) {
     loadOrCreateEgg(directory);
     const file = petDatabasePath(directory);
@@ -85,7 +87,7 @@ export class BabyLifeRepository {
   view(state: BabyLife) {
     const lifecycle = JSON.parse(String(this.db.prepare('SELECT snapshot FROM lifecycle WHERE singleton=1').get()!.snapshot));
     if (typeof lifecycle.orbId !== 'string') throw new Error('ORB_MISSING');
-    const view = babyView(state);
+    const view = babyView(state, this.attention);
     return { ...view, social: socialView(this.readSocial(), lifecycle.orbId,
       view.behavior === 'resting', view.behavior === 'drowsy') };
   }
@@ -99,12 +101,17 @@ export class BabyLifeRepository {
         if (!saved) throw new Error('BABY_STATE_MISSING');
         const before = saved;
         const socialBefore = this.readSocial();
-        const bodyCommand = command.type === 'feed' || command.type === 'touch' ? command : { type: 'tick' } as const;
-        const { state, events } = advanceBabyLife(before, now, bodyCommand);
-        const behavior = babyView(state).behavior;
+        const bodyCommand = command.type === 'feed' || command.type === 'touch' || command.type === 'snack-begin' || command.type === 'snack-finished' || command.type === 'meal-deferred' ? command : { type: 'tick' } as const;
+        const { state, events } = advanceBabyLife(before, now, bodyCommand, this.attention);
+        if (!state.attentionPreference) {
+          const identity = String(this.db.prepare('SELECT snapshot FROM lifecycle WHERE singleton=1').get()!.snapshot);
+          const hash = [...String(JSON.parse(identity).orbId)].reduce((sum, c) => sum + c.charCodeAt(0), 0);
+          state.attentionPreference = hash % 2 ? 'cursor' : 'bottom'; state.revision++;
+        }
+        const behavior = babyView(state, this.attention).behavior;
         const sleepEndsAt = behavior === 'sleeping' ? state.elapsedMs + cycle - state.elapsedMs % cycle : undefined;
         const social = advanceBabySocial(socialBefore, state.elapsedMs, behavior === 'resting',
-          command.type === 'feed' ? { type: 'stop' } : command, sleepEndsAt);
+          command.type === 'feed' || command.type === 'snack-begin' || command.type === 'snack-finished' || command.type === 'meal-deferred' ? { type: 'stop' } : command, sleepEndsAt);
         if (JSON.stringify(social.state) !== JSON.stringify(socialBefore) && state.revision === saved.revision) state.revision++;
         if (state.revision === saved.revision) return state;
         this.db.prepare('INSERT INTO baby_life VALUES(1, ?) ON CONFLICT(singleton) DO UPDATE SET snapshot=excluded.snapshot').run(JSON.stringify(state));
@@ -115,6 +122,40 @@ export class BabyLifeRepository {
         return state;
       });
     } catch { throw new Error('BABY_WRITE_FAILED'); }
+  }
+  setAttention(attention: BabyAttention): void {
+    validateAttention(attention);
+    if (this.attentionInitialized && attention.holdLife === this.attention.holdLife &&
+      attention.level === this.attention.level && attention.intervalSeconds === this.attention.intervalSeconds) return;
+    if (this.attentionInitialized && this.read()) this.apply({ type: 'tick' });
+    const previous = this.attention;
+    this.attention = { ...attention };
+    try { if (this.read()) this.apply({ type: 'tick' }); }
+    catch (error) { this.attention = previous; throw error; }
+    this.attentionInitialized = true;
+  }
+  canEatSnack(): boolean {
+    if (!this.read()) return false;
+    const state = this.apply({ type: 'tick' });
+    const allowed = canStartMeal(state, this.attention) && babyView(state, this.attention).behavior !== 'sleeping';
+    if (!allowed) this.apply({ type: 'meal-deferred' });
+    return allowed;
+  }
+  /** Call once per successful deletion receipt. Eating resumes across restart and
+   * completes through the normal tick, then starts the shared fifteen-minute gap. */
+  beginSnackMeal(receiptId?: string): void { this.apply({ type: 'snack-begin', receiptId }); }
+  /** Call only after an actually successful snack. Never use for an attempted deletion. */
+  finishSnack(): void { this.apply({ type: 'snack-finished' }); }
+  readHome(): BabyPosition | null { return this.read()?.home ?? null; }
+  setHome(home: BabyPosition): void {
+    if (!home || !Number.isFinite(home.x) || !Number.isFinite(home.y)) throw new Error('BABY_HOME_INVALID');
+    this.transaction(() => {
+      const state = this.read();
+      if (!state) throw new Error('BABY_NOT_READY');
+      state.home = { x: Math.round(home.x), y: Math.round(home.y) }; state.revision++;
+      validateBabyLife(state);
+      this.db.prepare('UPDATE baby_life SET snapshot=? WHERE singleton=1').run(JSON.stringify(state));
+    });
   }
   close() { this.db.close(); }
 }

@@ -1,5 +1,6 @@
 interface Window {
   babyLife: {
+    setReducedMotion: (enabled: boolean) => void;
     onDirection: (listener: (direction: 'left' | 'right') => void) => () => void;
     read: () => Promise<import('../pet/baby-life').BabyPresentation | null>;
     feed: (offerId: string, x: number, y: number) => Promise<import('../pet/baby-life').BabyPresentation>;
@@ -11,6 +12,7 @@ interface Window {
     subscribe: (listener: (state: import('./pet-state').EggSnapshot) => void) => () => void;
   };
   petWindow: {
+    onNativeDragReset: (listener: () => void) => () => void;
     snapshot: () => Promise<import('./pet').EggSnapshot & { name?: string | null }>;
     hover: (interactive: boolean) => void;
     beginDrag: () => void;

@@ -98,7 +98,7 @@ function continuityDirectory(t: test.TestContext) {
   return directory;
 }
 
-test('offline production restarts preserve egg care, witnessed hatch, baby experiences and all three inboxes', t => {
+test('offline production restarts preserve egg care, witnessed hatch, baby experiences and all three schedule kinds', t => {
   const directory = continuityDirectory(t);
   // Device-local noon keeps the current provisional day/night behavior deterministic.
   const start = new Date(2026, 8, 26, 12).getTime();
@@ -157,6 +157,8 @@ test('offline production restarts preserve egg care, witnessed hatch, baby exper
   // The missed timer, alarm and reminder all coexist with a sleeping baby.
   const sleeping = offlineLaunch(directory, 'inspect', start + BABY_TIMING.awake);
   assert.equal(sleeping.baby?.behavior, 'sleeping');
+  assert.equal(sleeping.baby.attention.holdLife, false, 'unacknowledged overdue notices alone do not hold life');
+  assert.equal(sleeping.baby.attention.level, 0, 'elapsed time without an explicit not-yet answer cannot escalate urgency');
   for (const row of [...sleeping.timers, ...sleeping.schedules]) {
     assert.equal(row.status, 'due');
     assert.equal(row.reason, 'recovered');
@@ -164,7 +166,8 @@ test('offline production restarts preserve egg care, witnessed hatch, baby exper
     assert.equal(row.appDisplayed, false);
   }
   assert.equal(sleeping.timers.length + sleeping.schedules.length, 3);
-  assert.match(sleeping.rendered, /재시작 후 복원/);
+  assert.equal(sleeping.rendered.match(/시간 지남 · 미확인/g)?.length, 3, 'all three recovered notices remain visible in the past section');
+  assert.equal(sleeping.rendered.match(/시스템 알림 미요청/g)?.length, 3, 'recovery does not pretend native delivery occurred');
   assert.match(sleeping.rendered, /서류 확인/);
 
   // A synthetic three-day absence exercises recovery, not real multi-day usage.
@@ -177,7 +180,8 @@ test('offline production restarts preserve egg care, witnessed hatch, baby exper
   assert.deepEqual(returned.care, egg.care);
   assert.deepEqual(returned.socialExperiences, praised.socialExperiences);
   assert.deepEqual(returned.experiences.map(row => row.kind), ['food_offered', 'meal_finished', 'sleep_completed']);
-  assert.equal(returned.experiences[2].duration_ms, 72 * BABY_TIMING.sleep);
+  assert.equal(returned.experiences[2].duration_ms, 72 * BABY_TIMING.sleep,
+    'all 72 sleep intervals are actual sleep here: the meal finished before the first and no schedule hold was active');
   assert.deepEqual(repeated.experiences, returned.experiences, 'reopening cannot duplicate meal or sleep history');
   assert.deepEqual(repeated.social, returned.social);
   assert.deepEqual(repeated.timers, sleeping.timers);

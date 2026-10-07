@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
-import { BABY_STAGE, BABY_TIMING as T, babyApproachDuration, babyView, cycle } from '../src/pet/baby-life';
+import { BABY_STAGE, BABY_TIMING as T, babyApproachDuration, babyView, cycle, layoutBabyAt } from '../src/pet/baby-life';
 import { loadOrCreateEgg, petDatabasePath } from '../src/storage/pet-repository';
 import { createPetWindow } from '../src/main/windows';
 const directory = mkdtempSync(path.join(tmpdir(), 'jarvis-baby-smoke-'));
@@ -62,7 +62,8 @@ app.whenReady().then(async () => {
     const body = document.querySelector('#egg').getBoundingClientRect();
     const name = document.querySelector('#pet-name').getBoundingClientRect();
     const orb = document.querySelector('#emotion-orb');
-    return Math.abs((name.left + name.width / 2) - (body.left + body.width / 2)) < 1 &&
+    const expectedNameCenter = Math.max(64, Math.min(innerWidth - 64, body.left + body.width / 2));
+    return Math.abs((name.left + name.width / 2) - expectedNameCenter) < 1 &&
       name.left >= 0 && name.right <= innerWidth && name.bottom <= innerHeight &&
       getComputedStyle(document.querySelector('#pet-name')).pointerEvents === 'none' &&
       orb.parentElement.id === 'egg' && getComputedStyle(orb).pointerEvents === 'none';
@@ -70,7 +71,7 @@ app.whenReady().then(async () => {
   assert.equal(await attached(), true, 'name and orb follow the initial body');
   const originalPosition = win.getPosition();
   assert.deepEqual(win.getSize(), [BABY_STAGE.width, BABY_STAGE.height]);
-  assert.deepEqual(await run('Object.keys(window.babyLife).sort()'), ['feed', 'onDirection', 'onSaveFailed', 'read', 'subscribe']);
+  assert.deepEqual(await run('Object.keys(window.babyLife).sort()'), ['feed', 'onDirection', 'onSaveFailed', 'read', 'setReducedMotion', 'subscribe']);
   const view = await run('window.babyLife.read()');
   const event = trusted!;
   for (const channel of ['baby:read', 'baby:feed']) {
@@ -87,11 +88,15 @@ app.whenReady().then(async () => {
   foreign.destroy();
   const db = new DatabaseSync(petDatabasePath(directory));
   const count = (kind: string) => db.prepare('SELECT COUNT(*) AS n FROM baby_experience WHERE kind=?').get(kind)!.n;
+  const foodCenter = () => run(`(() => { const box = document.querySelector('#food').getBoundingClientRect();
+    return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) }; })()`);
   const mouse = (type: 'mouseDown' | 'mouseMove' | 'mouseUp', x: number, y: number) => win.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 });
   // Actual Chromium pointer capture, without moving the system cursor or focusing apps.
-  mouse('mouseDown', 372, 200); await pause(); mouse('mouseMove', 425, 305); mouse('mouseUp', 425, 305);
+  let foodPoint = await foodCenter();
+  mouse('mouseDown', foodPoint.x, foodPoint.y); await pause(); mouse('mouseMove', 425, 305); mouse('mouseUp', 425, 305);
   await pause(); assert.equal(count('food_offered'), 0);
-  mouse('mouseDown', 372, 200); await pause();
+  foodPoint = await foodCenter();
+  mouse('mouseDown', foodPoint.x, foodPoint.y); await pause();
   await run('window.dispatchEvent(new Event("blur"))');
   mouse('mouseUp', 116, 146); await pause(); assert.equal(count('food_offered'), 0);
   db.exec("CREATE TRIGGER fail_baby BEFORE UPDATE ON baby_life BEGIN SELECT RAISE(ABORT,'test'); END");
@@ -100,7 +105,8 @@ app.whenReady().then(async () => {
   assert.equal(count('food_offered'), 0);
   await capture('save-failure');
   db.exec('DROP TRIGGER fail_baby');
-  mouse('mouseDown', 372, 200); await pause(); mouse('mouseMove', 220, 190); await pause(); mouse('mouseUp', 220, 190);
+  foodPoint = await foodCenter();
+  mouse('mouseDown', foodPoint.x, foodPoint.y); await pause(); mouse('mouseMove', 220, 190); await pause(); mouse('mouseUp', 220, 190);
   await until(() => run('document.querySelector("#egg").dataset.life === "approaching"'));
   assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   assert.equal(count('food_offered'), 1);
@@ -121,7 +127,8 @@ app.whenReady().then(async () => {
     return Math.abs(body.left - 154) < 1 && Math.abs(body.top - 127) < 1 &&
       bite.left <= body.left + 61 && bite.left >= body.left + 49 &&
       Math.abs(bite.top + bite.height / 2 - (body.top + 63)) < 4;
-  })()`), true, 'food meets the mouth after the approach');
+  })()`), true, 'food reaches the lower body after the approach');
+  assert.equal(await run('getComputedStyle(document.querySelector("#egg .shell"), "::after").content'), 'none', 'eating does not restore a mouth drawing');
   assert.equal(await run('document.querySelector("#sleep-symbol").hidden'), true);
   assert.equal(await attached(), true, 'name stays with the body at the meal');
   await capture('eating');
@@ -139,7 +146,7 @@ app.whenReady().then(async () => {
   assert.equal(await run(`(() => {
     const body = document.querySelector('#egg').getBoundingClientRect();
     const symbol = document.querySelector('#sleep-symbol').getBoundingClientRect();
-    return Math.abs(symbol.left - body.left - 93) < 1 && Math.abs(symbol.top - body.top - 13) < 1 &&
+    return Math.abs(symbol.left - body.left - 93) < 1 && Math.abs(symbol.top - body.top) < 1 &&
       document.elementFromPoint(symbol.left + 2, symbol.top + 2)?.id !== 'sleep-symbol';
   })()`), true, 'sleep symbol follows the body after feeding');
   assert.equal(await run('document.querySelector("#egg").getAttribute("aria-label").includes("자고 있습니다")'), true);
@@ -243,7 +250,7 @@ app.whenReady().then(async () => {
   const visualBase = await refresh();
   const visualSleep = { ...visualBase, revision: visualBase.revision + 100,
     behavior: 'sleeping', offerId: null, meal: null, reunion: false,
-    social: { ...visualBase.social, motion: 'still', orb: null } };
+    social: { ...visualBase.social, motion: 'still', accepting: true, orb: { ...visualBase.social.orb, expression: 'quiet' } } };
   win.webContents.send('baby:state', visualSleep);
   await until(() => run('document.querySelector("#egg").dataset.life === "sleeping"'));
   win.webContents.send('baby:state', { ...visualSleep, revision: visualSleep.revision + 1,
@@ -254,23 +261,30 @@ app.whenReady().then(async () => {
   assert.equal(await run('document.querySelector("#egg").dataset.reunion'), 'true', 'return follows wake');
   assert.equal(await run('getComputedStyle(document.querySelector(".shell")).animationName'), 'baby-joy');
   assert.equal(socialCount(), beforeVisualOnly, 'presentation-only wake and return do not create experience');
-  for (const position of [{ x: 8, y: 8 }, { x: 308, y: 200 }]) {
-    await run(`(() => {
-      const body = document.querySelector('#egg'); body.style.transition = 'none';
-      body.style.setProperty('--baby-x', '${position.x - 36}px');
-      body.style.setProperty('--baby-y', '${position.y - 152}px');
-      body.style.setProperty('--body-y', '${position.y}px');
-      body.style.setProperty('--social-x', '0px');
-      document.querySelector('#pet-name').textContent = '아주긴이름으로가장자리확인';
-      document.querySelector('#emotion-orb').hidden = false;
-      document.querySelector('#emotion-orb').dataset.play = 'false';
-    })()`);
-    assert.equal(await attached(), true, 'long name stays inside the stage at its corners');
+  let visualRevision = visualSleep.revision + 2;
+  for (const level of [0,1,2] as const) for (const x of [0, BABY_STAGE.width]) for (const y of [0, BABY_STAGE.height]) {
+    const position = layoutBabyAt({ x, y }, { x: 0, y: 0, width: BABY_STAGE.width, height: BABY_STAGE.height },level).position;
+    await run(`document.querySelector('#pet-name').textContent = '아주긴이름으로가장자리확인';`);
+    // Exercise the real renderer layout, not manual CSS offsets that bypass it.
+    win.webContents.send('baby:state', { ...visualSleep, revision: ++visualRevision,
+      behavior: 'resting', reunion: false, position, attention:{...visualSleep.attention,level} });
+    await until(() => run(`Math.abs(document.querySelector('#egg').getBoundingClientRect().left - ${position.x}) < 1`));
+    const settled=await run(`(() => {const b=document.querySelector('#egg').getBoundingClientRect();return {x:b.x,y:b.y};})()`);
+    await new Promise(resolve=>setTimeout(resolve,160));
+    const after=await run(`(() => {const b=document.querySelector('#egg').getBoundingClientRect();return {x:b.x,y:b.y};})()`);
+    assert.deepEqual(after,settled,'edge placement must not slide after release');
+    assert.equal(await attached(), true, 'long name follows the body while clamping inside each corner');
     assert.equal(await run(`(() => {
-      const orb = document.querySelector('#emotion-orb').getBoundingClientRect();
-      return orb.left >= 0 && orb.top >= 0 && orb.right <= innerWidth && orb.bottom <= innerHeight;
-    })()`), true, 'orb remains visible at stage corners');
+      const a=document.querySelector('#pet-name').getBoundingClientRect();
+      const b=document.querySelector('#emotion-orb').getBoundingClientRect();
+      return a.right<=b.left || b.right<=a.left || a.bottom<=b.top || b.bottom<=a.top;
+    })()`),true,'name and orb must never overlap at a corner');
+    assert.equal(await run(`(() => {
+      const orb = document.querySelector('#emotion-orb'); const box = orb.getBoundingClientRect();
+      return !orb.hidden && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
+    })()`), true, 'the same always-visible orb remains inside every stage corner');
   }
+  writeFileSync(path.join(tmpdir(),'jarvis-baby-audit-edge.png'),(await win.webContents.capturePage()).toPNG());
   win.destroy(); db.close(); repo.close(); lifecycle.close();
   clearTimeout(timeout);
   console.log('PASS: baby pointer/feed/storage checks; night/late-night/morning, transient return/reload/lock/resume, sleep priority, reduced motion, screenshots');

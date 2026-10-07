@@ -71,7 +71,7 @@ test('one offer, fixed eating time, stale/duplicate feed, and post-meal hunger',
   assert.equal(advanceBabyLife(done.state, T.hungry + mealMs, feed).events.length, 0);
   assert.throws(() => advanceBabyLife(done.state, T.hungry + mealMs, { ...feed, x: NaN }), /DROP_INVALID/);
 });
-test('wide edge drops move to a reachable mouth point and finish only after chewing', () => {
+test('wide edge drops move food near the lower body and finish only after chewing', () => {
   assert.deepEqual(reachableFoodPoint(420, 300), { x: 374, y: 263 });
   assert.deepEqual(babyTargetForFood(420, 300), { x: 308, y: 200 });
   assert.deepEqual(babyTargetForFood(0, 0), { x: 8, y: 8 });
@@ -106,6 +106,15 @@ test('months away stay bounded, O(1) aggregate completed sleep, no invented care
   assert.deepEqual(result.events, [{ kind: 'sleep_completed', atMs: elapsed, durationMs: 180 * 24 * T.sleep }]);
   const finish = advanceBabyLife(result.state, elapsed + T.sleep - 1000, tick);
   assert.deepEqual(finish.events, [{ kind: 'sleep_completed', atMs: elapsed + T.sleep - 1000, durationMs: T.sleep }]);
+});
+test('legacy sleeping snapshots record only the sleep observed after adopting actual-duration accounting', () => {
+  // Old v5 snapshots have no pendingSleepMs. Do not invent the elapsed minute
+  // before this last saved observation, or recover a full cycle from phase alone.
+  const old = { ...initialBabyLife(1000), elapsedMs: T.awake + 60_000, hungerMs: T.hungry };
+  const remainingSleep = T.sleep - 60_000;
+  const completed = advanceBabyLife(old, 1000 + remainingSleep, tick);
+  assert.deepEqual(completed.events, [{ kind: 'sleep_completed', atMs: 1000 + remainingSleep, durationMs: remainingSleep }]);
+  assert.deepEqual(advanceBabyLife(completed.state, completed.state.observedAtMs, tick).events, []);
 });
 test('clock reversal does not double count; sleeping contact never repeatedly wakes baby', () => {
   let s = advanceBabyLife(initialBabyLife(100), T.awake + 100, tick).state;
@@ -181,10 +190,10 @@ test('production startup restores the same named baby and an interrupted meal us
   const finished = launch(now + mealMs);
   assert.equal(finished.behavior, 'resting');
   assert.deepEqual(finished.position, { x: BABY_STAGE.startX, y: BABY_STAGE.startY },
-    'a new app session starts from the usual place');
+    'a legacy baby with no saved home still starts at the default local position');
   const returned = launch(now + T.awake);
   assert.equal(returned.behavior, 'resting');
-  assert.equal(returned.reunion, true);
+  assert.equal(returned.reunion, true, 'startup attention recalculation must not erase the pre-startup observation used for a return');
   assert.equal(launch(now + T.awake + 1000).reunion, false, 'quick restart does not replay a return');
 });
 test('v4 migration failure rolls back schema/version and preserves original backup', t => {

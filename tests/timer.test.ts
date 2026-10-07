@@ -20,14 +20,14 @@ function fixture(t: test.TestContext) {
     restart() { service.dispose(); mono = 1000; service = create(); } };
 }
 
-test('only an explicit five-minute request is stored; duplicate requests and concurrent active timers are rejected', t => {
+test('explicit durations are stored; request retries remain idempotent and concurrent timers coexist', t => {
   const f = fixture(t);
-  for (const input of ['알람 맞춰줘','3시에 알려줘','5초 타이머','x'.repeat(81),'']) assert.equal(f.service.submit('bad', input).ok, false);
+  for (const input of ['알람 맞춰줘','3시에 알려줘','0초 타이머','x'.repeat(8193),'']) assert.equal(f.service.submit('bad', input).ok, false);
   assert.equal(f.service.views().length, 0);
   assert.equal(f.service.submit('a','5분 타이머').ok,true);
   assert.equal(f.service.submit('a','5분 타이머').ok,true);
-  assert.equal(f.service.submit('b','5분 타이머').ok,false);
-  assert.equal(f.service.views().length,1);
+  assert.equal(f.service.submit('b','5분 타이머').ok,true);
+  assert.equal(f.service.views().length,2);
 });
 test('live timer ignores wall clock changes and emits once on monotonic deadline', t => {
   const f = fixture(t); f.service.submit('a','5분 타이머');
@@ -57,10 +57,10 @@ test('overdue restart restores inbox without a burst of OS notifications, acknow
   f.restart(); assert.equal(f.service.views().length,1);
   f.service.acknowledge('a'); f.restart(); assert.equal(f.service.views().length,0);
 });
-test('sleep resume catches a past deadline without calling it on-time; deadline beats late cancellation', t => {
+test('sleep resume catches a past deadline without calling it on-time; past timer can then be cancelled', t => {
   const f = fixture(t); f.service.submit('a','5분 타이머'); f.wall(360000); f.service.resume();
   assert.equal(f.deliveries,1); assert.equal(f.service.views()[0].reason,'late');
-  assert.equal(f.service.cancel('a').ok,false);
+  assert.equal(f.service.cancel('a').ok,true);
 });
 test('unknown notification result and unconfirmed app display survive a delivery interruption', t => {
   const f = fixture(t); f.service.submit('a','5분 타이머');
@@ -101,6 +101,8 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   type Handler = (event?: Record<string, unknown>) => unknown;
   class Element {
     value = ''; textContent = ''; hidden = false; disabled = false;
+    dataset: Record<string,string> = {}; isConnected = true;
+    get childElementCount() { return this.children.length; }
     children: Element[] = [];
     onclick?: () => Promise<void>;
     private listeners = new Map<string, Handler[]>();
@@ -115,6 +117,7 @@ test('prompt countdown follows its deadline and cancels with its saved result in
     focus() {}
     replaceChildren() { this.textContent = ''; this.children = []; }
     append(...children: Element[]) { this.children.push(...children); }
+    prepend(...children: Element[]) { this.children.unshift(...children); }
   }
   const elements = new Map<string, Element>();
   const find = (selector: string) => {
@@ -124,10 +127,12 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   const document = new Element() as Element & {
     querySelector: (selector: string) => Element;
     createElement: () => Element;
+    querySelectorAll: () => Element[];
     hidden: boolean;
   };
   document.querySelector = find;
   document.createElement = () => new Element();
+  document.querySelectorAll = () => [];
   document.hidden = false;
   let now = 0, nextTimer = 0, closes = 0, nextId = 0;
   const timers = new Map<number, { due: number; callback: () => void }>();
@@ -145,6 +150,12 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   let onClose = () => {}, onOpen = () => {};
   let hasTimer = false;
   const window = {
+    assistantPanel: {
+      read: async () => ({stage:'egg',card:null,items:hasTimer ? [{id:'timer',kind:'timer',title:'타이머',status:'pending',timerState:'pending',dueAt:0,remainingMs:300000,delivery:'not-requested',acknowledged:false}] : []}),
+      submitTimer: async () => ({ok:true,message:'저장했습니다.'}),
+      action: async () => {hasTimer=false;return {ok:true,message:'타이머를 취소했습니다.'};},
+      subscribe: () => {},
+    },
     timerPanel: {
       read: async () => hasTimer ? [{ id: 'timer', status: 'pending', dueAt: 0 }] : [],
       cancel: async () => { hasTimer = false; return { ok: true, message: '타이머를 취소했습니다.' }; },
@@ -165,7 +176,7 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   runInNewContext(readFileSync(path.join(__dirname, '../src/renderer/prompt.js'), 'utf8'), {
     document, window, performance: { now: () => now },
     crypto: { randomUUID: () => `request-${++nextId}` },
-    setTimeout: setFakeTimeout, clearTimeout: (id: number) => timers.delete(id),
+    setInterval: () => 0, setTimeout: setFakeTimeout, clearTimeout: (id: number) => timers.delete(id),
   });
   const input = find('#request'), form = find('#timer-form'), result = find('#result');
   const submit = async (value: string) => {
@@ -225,7 +236,9 @@ test('prompt countdown follows its deadline and cancels with its saved result in
   hasTimer = true;
   await submit('5분 타이머');
   await Promise.resolve();
-  await find('#timers').children[0]!.children[2]!.onclick!();
+  const article=find('#timers').children[0]!;
+  const actions=article.children[article.children.length-1];
+  await actions.children.find(button=>button.textContent==='취소')!.onclick!();
   assert.equal(result.textContent, '타이머를 취소했습니다.');
   await document.emit('keydown', { key: 'x' });
   assert.equal(result.textContent, '타이머를 취소했습니다.', 'interaction cannot restore stale registration success');

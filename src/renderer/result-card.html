@@ -1,0 +1,11 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'">
+<title>Jarvis Pet · 일 확인</title><link rel="stylesheet" href="prompt.css"><link rel="stylesheet" href="result-card.css"></head>
+<body class="result-card"><main>
+<p id="card-count" class="detail"></p><h1 id="card-title"></h1>
+<div id="answers" class="actions"><button id="done">했어요</button><button id="later" class="secondary">아직이에요</button><button id="cancel" class="secondary">취소할게요</button></div>
+<form id="later-form" hidden><button type="button" id="back" class="secondary">돌아가기</button><div class="actions"><button type="button" data-minutes="5">5분 뒤</button><button type="button" data-minutes="30">30분 뒤</button></div>
+<label for="delay">직접 입력</label><div class="custom-delay"><input id="delay" type="number" min="1" step="1" inputmode="numeric" placeholder="분" aria-label="재알림까지 남은 분"><button type="submit">예약</button></div></form>
+<button id="undo" class="secondary" hidden>완료 되돌리기</button>
+<p id="card-result" role="status" aria-live="polite"></p>
+</main><script src="result-card.js"></script></body></html>

@@ -29,7 +29,7 @@ lifecycle.startJarvis = () => start({ show:false, onReady: async eggWindow => {
   if (mode === 'cancel') reply = await panel.webContents.executeJavaScript("window.timerPanel.cancel('restart-request')");
   if (mode === 'ack') await panel.webContents.executeJavaScript("window.timerPanel.acknowledge('restart-request')");
   const after = await panel.webContents.executeJavaScript('window.timerPanel.read()');
-  const rendered = await panel.webContents.executeJavaScript('new Promise(resolve => setTimeout(() => resolve(document.querySelector("#timers").textContent), 50))');
+  const rendered = await panel.webContents.executeJavaScript('new Promise(resolve => setTimeout(() => resolve(document.querySelector("#schedules").textContent), 50))');
   const db = new DatabaseSync(petDatabasePath(directory), { readOnly: true });
   const careCount = Number(db.prepare('SELECT count(*) AS count FROM egg_care').get()?.count);
   db.close();

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { app, type Notification, type NotificationConstructorOptions } from 'electron';
 import { scheduleNotifications, timerNotifications } from '../src/main/notifications';
 import { TimerService } from '../src/assistant/timer';
+import type { TimerRecord } from '../src/shared/timer';
 import type { ScheduleRecord } from '../src/shared/schedule';
 import { TimerRepository } from '../src/storage/timer-repository';
 
@@ -18,19 +19,29 @@ class FakeNotification extends EventEmitter {
 
 // No window, user DB, or native notification request is needed for these races.
 app.whenReady().then(async () => {
+  const subject: TimerRecord = { id:'click-target',title:'라면',startedAt:1000,dueAt:181000,durationMs:180000,
+    status:'due',reason:'on-time',systemDelivery:'requested',appDisplayed:false,
+    menu:'hidden',autoExcluded:false,pausedRemainingMs:null,restartOf:null };
   const make = (onShow?: (fake: FakeNotification) => void) => {
     const fake = new FakeNotification();
     fake.onShow = () => onShow?.(fake);
     const results: string[] = [];
+    const clicks: (TimerRecord | undefined)[] = [];
     const notices = timerNotifications(undefined, {
       backend: { isSupported: () => true, create: () => fake as unknown as Notification },
-      outcomeTimeoutMs: 15,
+      outcomeTimeoutMs: 15, onClick: item => clicks.push(item),
     });
-    notices.notify(result => results.push(result));
-    return { fake, results, notices };
+    notices.notify(result => results.push(result), subject);
+    return { fake, results, clicks, notices };
   };
   const shown = make(fake => fake.emit('show'));
   assert.deepEqual(shown.results, ['shown'], 'a missing click is not a failure');
+  assert.equal(shown.fake.closed,false,'show must not retract the native notification');
+  assert.ok(shown.fake.eventNames().includes('click'),'show must retain the late-click callback');
+  assert.deepEqual(shown.clicks,[],'show alone is not acknowledgement');
+  shown.fake.emit('click'); shown.fake.emit('click');
+  assert.deepEqual(shown.clicks,[subject],'late click identifies the original timer exactly once');
+  assert.deepEqual(shown.results,['shown'],'click does not overwrite a known delivery result');
   shown.notices.dispose();
   assert.equal(shown.fake.closed, false, 'shutdown must not withdraw a shown OS notice');
   shown.fake.emit('failed', {}, 'late failure');
@@ -49,14 +60,26 @@ app.whenReady().then(async () => {
 
   const closed = make(fake => fake.emit('close'));
   assert.deepEqual(closed.results, ['unknown'], 'close before show must not leave a requested result');
+  closed.fake.emit('click'); assert.deepEqual(closed.clicks,[],'native close is not a click');
+  closed.notices.dispose();
 
   const timedOut = make();
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.deepEqual(timedOut.results, ['unknown']);
-  assert.equal(timedOut.fake.closed, true);
-  assert.equal(timedOut.fake.eventNames().length, 0);
+  assert.equal(timedOut.fake.closed, false,'timeout must not withdraw a possibly accepted native notification');
+  assert.ok(timedOut.fake.eventNames().includes('click'),'unknown outcome still permits a later click');
+  assert.deepEqual(timedOut.clicks,[]);
   timedOut.fake.emit('show');
   assert.deepEqual(timedOut.results, ['unknown']);
+  timedOut.fake.emit('click'); timedOut.fake.emit('click');
+  assert.deepEqual(timedOut.clicks,[subject]);
+  assert.equal(timedOut.fake.eventNames().length,0,'click releases callbacks after handling once');
+  timedOut.notices.dispose();
+
+  const shownAtDisposal = make(fake => fake.emit('show'));
+  shownAtDisposal.notices.dispose(); shownAtDisposal.fake.emit('click');
+  assert.equal(shownAtDisposal.fake.closed,false);
+  assert.deepEqual(shownAtDisposal.clicks,[],'shutdown removes callbacks without withdrawing the shown alert');
 
   const disposed = make();
   disposed.notices.dispose();
@@ -66,7 +89,8 @@ app.whenReady().then(async () => {
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.deepEqual(disposed.results, []);
   assert.equal(disposed.fake.eventNames().length, 0);
-  assert.equal(disposed.fake.closed, true);
+  assert.equal(disposed.fake.closed, false,'shutdown must not retract an unresolved OS request');
+  disposed.fake.emit('click'); assert.deepEqual(disposed.clicks,[]);
 
   const thrown = make(() => { throw new Error('native show failed'); });
   assert.deepEqual(thrown.results, ['failed']);
@@ -112,11 +136,12 @@ app.whenReady().then(async () => {
     } });
     const service = new TimerService(new TimerRepository(directory),
       { wall: () => now, monotonic: () => now }, timerNotices.notify, () => {});
-    assert.equal(service.submit('success', '5분 타이머').ok, true);
-    assert.equal(service.submit('success', '5분 타이머').ok, true);
+    assert.equal(service.submit('success', '라면 5분 타이머').ok, true);
+    assert.equal(service.submit('success', '라면 5분 타이머').ok, true);
     now += 300_000; service.tick(); service.tick();
     assert.equal(native.length, 1, 'one completed timer makes one OS request');
     assert.equal(timerOptions[0].silent, false, 'request OS sound without claiming playback');
+    assert.equal(timerOptions[0].body,'라면 시간이 끝났습니다.','native text uses this timer’s saved title');
     assert.equal(service.views()[0].systemDelivery, 'requested');
     native[0].emit('show');
     assert.equal(service.views()[0].systemDelivery, 'shown');
@@ -137,6 +162,6 @@ app.whenReady().then(async () => {
     assert.equal(service.views()[0].status, 'due', 'native failure leaves the app inbox available');
     service.dispose(); timerNotices.dispose();
   } finally { rmSync(directory, { recursive: true, force: true }); }
-  console.log('PASS: notification lifecycle, timer delivery/acknowledgement/duplicate checks, and schedule adapter (no native permission request)');
+  console.log('PASS: notification lifecycle and late-click retention, timer delivery/acknowledgement/duplicate checks, and schedule adapter (no native permission request)');
   app.quit();
 }).catch(error => { console.error(error); app.exit(1); });

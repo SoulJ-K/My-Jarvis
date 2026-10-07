@@ -1,0 +1,19 @@
+html,body { height:100%; }
+main { height:100%; display:flex; flex-direction:column; padding:22px; }
+h1 { font-size:21px; }
+header p { font-size:13px; margin:8px 0 14px; }
+label[for=search] { font-size:13px; margin:0 0 5px; }
+#search { flex-shrink:0; min-height:38px; }
+form { display:flex; flex-direction:column; flex:1; min-height:0; margin-top:14px; }
+#files { flex:1; overflow-y:auto; min-height:55px; border-top:1px solid var(--line); }
+.file { display:flex; align-items:center; gap:12px; min-height:48px; padding:10px 8px; margin:0; border-bottom:1px solid var(--line); font-size:14px; font-weight:400; cursor:pointer; }
+.file:has(:checked) { background:#e7eee4; }
+.file:has(:disabled) { color:var(--muted); cursor:default; }
+.file input { width:19px; height:19px; min-height:0; padding:0; flex-shrink:0; accent-color:var(--accent); }
+.file span { overflow-wrap:anywhere; word-break:break-word; }
+#message { font-size:13px; margin:8px 0 0; }
+#message:empty { display:none; }
+footer { flex-shrink:0; border:0; padding:10px 0 0; margin:0; }
+#selection { margin:0; font-size:13px; }
+.actions { justify-content:flex-end; margin-top:8px; }
+button { font-size:14px; }

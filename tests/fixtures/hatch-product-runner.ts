@@ -120,8 +120,13 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
         const area = screen.getDisplayMatching(pet.getBounds()).workArea;
         pet.setPosition(area.x + area.width - 180, area.y + area.height - 200);
       }
+      const hatchArea = screen.getDisplayMatching(pet.getBounds()).workArea;
       (trayMenu!.items[1].click as () => void)();
       await until(async () => (await read()).available);
+      const centred = pet.getBounds();
+      assert.ok(Math.abs(centred.x + centred.width / 2 - hatchArea.x - hatchArea.width / 2) <= 1,
+        'explicit hatch starts at the current monitor centre, including from an edge');
+      assert.ok(Math.abs(centred.y + centred.height / 2 - hatchArea.y - hatchArea.height / 2) <= 1);
       assert.equal(pet.isVisible(), true);
       assert.equal(BrowserWindow.getAllWindows().filter(w => w.getTitle().includes('첫 만남')).length, 0);
       await until(() => rendered(nextHatchStep(original)));
@@ -197,7 +202,29 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
             assert.deepEqual(pet.getSize(), [420, 300]);
             assert.equal((await read()).layout.expanded, true);
             await until(() => rendered('contact'));
-            await pause(750);
+            // Inspect the actual animation's first frame. Waiting until it has
+            // settled would hide a teleport caused by tweened resize compensation
+            // or a non-zero opening keyframe. Keep the same strict 2px tolerance.
+            const firstContactBody = await run<{ x: number; y: number }>(`(() => {
+              const body = document.querySelector('#hatch-overlay .hatch-baby');
+              const animation = body.getAnimations().find(a => a.animationName === 'hatch-approach');
+              if (!animation) throw new Error('CONTACT_ANIMATION_MISSING');
+              animation.pause(); animation.currentTime = 0;
+              const box = body.getBoundingClientRect();
+              return { x: box.x, y: box.y };
+            })()`);
+            const contactBounds = pet.getBounds();
+            assert.ok(Math.abs(beforeBounds!.x + beforeBody!.x - contactBounds.x - firstContactBody.x) < 2,
+              JSON.stringify({ beforeBounds, beforeBody, contactBounds, firstContactBody }));
+            assert.ok(Math.abs(beforeBounds!.y + beforeBody!.y - contactBounds.y - firstContactBody.y) < 2,
+              'resize compensation must preserve the first contact frame vertically');
+            await run(`(async () => {
+              const body = document.querySelector('#hatch-overlay .hatch-baby');
+              const animation = body.getAnimations().find(a => a.animationName === 'hatch-approach');
+              if (!animation) throw new Error('CONTACT_ANIMATION_MISSING');
+              animation.play(); await animation.finished;
+              await new Promise(resolve => requestAnimationFrame(resolve));
+            })()`);
             const afterBounds = pet.getBounds();
             const afterBody = await run<{ x: number; y: number }>(`(() => {
               const box = document.querySelector('#hatch-overlay .hatch-baby').getBoundingClientRect();
@@ -211,7 +238,9 @@ lifecycle.startJarvis = () => startJarvis({ show: interactive,
             assert.ok(afterBounds.y + afterBounds.height <= area.y + area.height);
           }
         }
-        if (mode === 'exercise-edge') assert.equal((await read()).layout.y, 68);
+        // v0.2 explicitly recentres an edge-started hatch. The old bottom-only
+        // naming lift (y=68) is no longer the expected product path.
+        if (mode === 'exercise-edge') assert.equal((await read()).layout.y, 50);
         await until(() => rendered('naming'));
         await until(() => run('Boolean(document.querySelector("#hatch-overlay form input"))'));
         await pause(120);

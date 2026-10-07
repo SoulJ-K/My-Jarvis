@@ -3,6 +3,10 @@ import electron from 'electron';
 
 // Use Electron's bundled Node for SQLite tests, not the shell's Node installation.
 for (const [args, asNode] of [
+  ...(process.platform === 'darwin' ? [[['dist/tests/dock-native-smoke.js'], false]] : []),
+  [['--test', 'dist/tests/baby-v02.test.js', 'dist/tests/hatch-v02.test.js', 'dist/tests/dock-snack.test.js', 'dist/tests/trash-snack.test.js', 'dist/tests/trash-snack-selection.test.js'], true],
+  [['dist/tests/v02-smoke.js'], false],
+  [['--test', 'dist/tests/timer-v02.test.js', 'dist/tests/followup.test.js', 'dist/tests/notification-queue.test.js', 'dist/tests/v02-integration.test.js'], true],
   [['--test', 'dist/tests/brain.test.js', 'dist/tests/egg-life.test.js'], true],
   [['--test', 'dist/tests/lifecycle.test.js'], true],
   [['--test', 'dist/tests/baby-life.test.js', 'dist/tests/baby-social.test.js'], true],

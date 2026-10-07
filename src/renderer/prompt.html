@@ -4,19 +4,22 @@
 <title>Jarvis Pet · 앱 안내</title><link rel="stylesheet" href="prompt.css"></head>
 <body><main>
 <header><p class="eyebrow">JARVIS PET · 앱 안내</p><h1>펫에게 부탁하기</h1><p>짧은 이야기와 시간 약속을 한 곳에서.</p></header>
-<form id="timer-form"><label for="request">무엇을 도와드릴까요?</label><input id="request" maxlength="200" autocomplete="off" placeholder="예: 내일 오후 7시에 퇴실체크 알람해줘" aria-describedby="hint result">
+<form id="timer-form"><label for="request">무엇을 도와드릴까요?</label><input id="request" maxlength="500" autocomplete="off" placeholder="예: 내일 오후 7시에 퇴실체크 알람해줘" aria-describedby="hint result">
 <p id="hint">타이머, 알람, 리마인더를 여기에 적어 주세요. 알람·리마인더는 내용을 확인한 뒤 저장합니다.</p>
+<label for="timer-menu">타이머 메뉴바 표시</label><select id="timer-menu"><option value="default">3분 남았을 때부터</option><option value="pinned">처음부터 고정</option><option value="hidden">표시하지 않기</option></select>
 <div class="actions"><button id="submit" type="submit">보내기</button><button id="close" type="button" class="secondary">닫기 / 취소</button></div></form>
 <p id="result" role="status" aria-live="polite">Enter로 보내고, Esc로 입력창을 닫을 수 있어요.</p>
+<section id="pin-confirmation" class="timer" hidden><p>이미 고정한 타이머가 있어요. 새 타이머로 교체할까요? 기존 타이머와 알림은 계속됩니다.</p><div class="actions"><button id="pin-replace">교체</button><button id="pin-keep" class="secondary">유지</button></div></section>
 <section id="schedule-clarification" class="timer" aria-label="시각 확인" hidden><div id="schedule-choices" class="actions"></div></section>
 <section id="schedule-confirmation" class="timer" aria-labelledby="confirmation-title" hidden><h2 id="confirmation-title">이 내용으로 등록할까요?</h2><p id="schedule-summary"></p><p class="detail">표시한 시간대의 시각으로 저장합니다. 기기 시간대가 바뀌어도 같은 순간에 알립니다.</p><div class="actions"><button id="schedule-confirm" type="button">이 내용으로 등록</button><button id="schedule-edit" type="button" class="secondary">수정하기</button></div></section>
 <details class="examples"><summary>지금 사용할 수 있는 입력 예시</summary><ul>
-<li><strong>타이머</strong> · 5분 타이머</li>
+<li><strong>타이머</strong> · 라면 3분 30초 타이머 / 1시간 타이머</li>
 <li><strong>알람</strong> · 내일 오후 여섯시 반에 퇴실체크 알람해줘</li>
 <li><strong>리마인더</strong> · 내일 15:00에 서류 확인 리마인더해줘</li>
-<li><strong>아기와 이야기</strong> · 안녕 / 잘했어 / 구슬 놀이 / 그만</li>
-</ul><p class="detail">날짜를 생략하면 오늘 가능한 시각을 찾고, 오전·오후가 모두 가능할 때만 묻습니다. 알림은 한 번만 울립니다. 5분 타이머는 한 번에 하나만 사용할 수 있어요.</p></details>
-<section aria-labelledby="list-title"><h2 id="list-title">타이머</h2><div id="timers"></div></section>
-<section aria-labelledby="schedule-list-title"><h2 id="schedule-list-title">예약 · 지난 미확인 알림</h2><div id="schedules"></div></section>
+<li id="baby-examples" hidden><strong>아기와 이야기</strong> · 안녕 / 뭐해? / 배고파 / 보고싶었어? / 구슬놀이 / 간식먹어</li>
+</ul><p class="detail">날짜를 생략하면 오늘 가능한 시각을 찾고, 오전·오후가 모두 가능할 때만 묻습니다. 타이머는 여러 개 사용할 수 있습니다. 메뉴바에 숨겨도 시스템 알림은 전달합니다.</p></details>
+<section aria-labelledby="list-title"><h2 id="list-title">진행 중</h2><p id="list-warning" role="status" hidden></p>
+<div id="timers"></div></section>
+<section class="past-section" aria-labelledby="schedule-list-title"><h2 id="schedule-list-title">지난 알림 · 확인할 일</h2><div id="schedules"></div></section>
 <footer>앱을 완전히 종료하거나 컴퓨터가 잠들면 정시 알림을 보장하지 않습니다. 다시 열면 지난 타이머와 알림을 여기에서 확인할 수 있습니다.</footer>
 </main><script src="prompt.js"></script></body></html>
