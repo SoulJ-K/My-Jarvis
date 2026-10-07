@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, realpathSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,20 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 // Local preview only. This is deliberately not a release-signing pipeline:
 // no identity/keychain access, hardened runtime, notarization or installation.
 // https://www.electronjs.org/docs/latest/tutorial/application-distribution
-export function packageMac({ validation = false } = {}) {
+export function packageMac({ validation = false, existingDataDirectory } = {}) {
+  if (validation && existingDataDirectory !== undefined) throw new Error('VALIDATION_CANNOT_USE_EXISTING_DATA');
+  let existingDirectory;
+  if (existingDataDirectory !== undefined) {
+    if (typeof existingDataDirectory !== 'string' || !path.isAbsolute(existingDataDirectory)) {
+      throw new Error('EXISTING_DATA_REQUIRES_ABSOLUTE_PATH');
+    }
+    // Read metadata only. Packaging must never create, copy or open the pet DB.
+    const database = path.join(existingDataDirectory, 'pet/pet.sqlite3');
+    let stat;
+    try { stat = lstatSync(database); } catch { throw new Error('EXISTING_PET_NOT_FOUND'); }
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0) throw new Error('EXISTING_PET_NOT_FOUND');
+    existingDirectory = realpathSync(existingDataDirectory);
+  }
   if (process.platform !== 'darwin') throw new Error('MACOS_REQUIRED');
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   if (!existsSync(path.join(root, pkg.main))) throw new Error('BUILD_REQUIRED');
@@ -41,7 +54,27 @@ export function packageMac({ validation = false } = {}) {
   }, null, 2) + '\n');
   const launcher = validation
     ? readFileSync(path.join(root, 'scripts/mac-validation-entry.cjs'), 'utf8')
-    : `const { app } = require('electron');\nconst path = require('node:path');\n// Preview builds never open the user's existing pet data.\nconst directory = path.join(app.getPath('appData'), 'Jarvis Pet Preview');\napp.setPath('userData', directory);\napp.setPath('sessionData', directory);\nrequire('./${pkg.main}');\n`;
+    : existingDirectory ? `const { app, dialog } = require('electron');
+const { lstatSync } = require('node:fs');
+const path = require('node:path');
+const directory = ${JSON.stringify(existingDirectory)};
+// Recheck at launch: a moved or missing store must not silently create a new pet.
+try {
+  const stat = lstatSync(path.join(directory, 'pet/pet.sqlite3'));
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0) throw new Error();
+} catch {
+  console.error('EXISTING_PET_NOT_FOUND: 기존 펫 자료를 찾을 수 없어 실행하지 않습니다.');
+  app.whenReady().then(() => {
+    dialog.showErrorBox('기존 펫 자료를 찾을 수 없습니다', '지정한 저장 폴더를 확인해 주세요. 새 펫을 만들지 않고 실행을 중단했습니다.');
+    app.exit(1);
+  });
+  return;
+}
+app.setPath('userData', directory);
+app.setPath('sessionData', directory);
+require('./${pkg.main}');
+`
+    : `const { app } = require('electron');\nconst path = require('node:path');\n// Default preview builds keep using their separate Preview data.\nconst directory = path.join(app.getPath('appData'), 'Jarvis Pet Preview');\napp.setPath('userData', directory);\napp.setPath('sessionData', directory);\nrequire('./${pkg.main}');\n`;
   writeFileSync(path.join(payload, 'launch.cjs'), launcher);
   const edit = (plist, key, value) => execFileSync('/usr/bin/plutil', ['-replace', key, '-string', value, plist]);
   const plist = path.join(contents, 'Info.plist');
@@ -67,8 +100,14 @@ export function packageMac({ validation = false } = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = packageMac();
+  const args = process.argv.slice(2);
+  if (args.length !== 0 && (args.length !== 2 || args[0] !== '--existing-data')) {
+    throw new Error('USAGE: package-mac.mjs [--existing-data /absolute/path/to/data]');
+  }
+  const result = packageMac({ existingDataDirectory: args[1] });
   console.log(`LOCAL_PREVIEW_APP:${result.bundle}`);
   console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
-  console.log('DATA:separate Jarvis Pet Preview directory; existing pet data is not used');
+  console.log(args.length
+    ? 'DATA:explicit existing pet directory; no pet data copied; app has NOT been launched'
+    : 'DATA:separate Jarvis Pet Preview directory; existing pet data is not used');
 }
