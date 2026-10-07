@@ -271,6 +271,8 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const babyReady = () => Boolean(baby && currentPet().stage === 'baby' && currentPet().name);
   let babyPosition: BabyPosition = { x: BABY_STAGE.startX, y: BABY_STAGE.startY };
   let attentionAct: 'bottom' | 'cursor' | null = null;
+  let bottomDirection = 1;
+  let bottomHop: {startedAt:number;from:BabyPosition;to:BabyPosition} | null = null;
   let reducedMotion = false;
   let attentionLevel: 0 | 1 | 2 = 0;
   let home = baby?.readHome() ?? null;
@@ -364,15 +366,34 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
         const cursor = screen.getCursorScreenPoint();
         const area = screen.getDisplayNearestPoint(attentionAct === 'cursor' ? cursor : home).workArea;
         const inset = babyBodyInset(attentionLevel);
-        const target = attentionAct === 'bottom'
-          ? { x: home.x, y: area.y + area.height - inset.height }
-          : { x: cursor.x + (cursor.x + 160 < area.x + area.width ? 90 : -160), y: cursor.y + 50 };
         const current = visibleAnchor();
-        win.webContents.send('baby:direction', cursor.x < current.x + inset.width / 2 ? 'left' : 'right');
-        const distance = Math.hypot(target.x - current.x, target.y - current.y);
-        const fraction = Math.min(1, dt * .65 / Math.max(1, distance));
-        placeVisible({ x: current.x + (target.x - current.x) * fraction, y: current.y + (target.y - current.y) * fraction }, area);
-      } else if (!drag && (previous || changedLevel)) restoreHome();
+        if (attentionAct === 'bottom') {
+          if (previous !== 'bottom' || !bottomHop || now - bottomHop.startedAt >= 1000) {
+            if (current.x >= area.x + area.width - inset.width - 12) bottomDirection = -1;
+            else if (current.x <= area.x + 12) bottomDirection = 1;
+            bottomHop = {startedAt:now,from:current,to:{
+              x:Math.max(area.x,Math.min(area.x+area.width-inset.width,current.x+bottomDirection*145)),
+              y:area.y+area.height-inset.height}};
+          }
+          // 700ms in the air, then 300ms visibly planted before the next hop.
+          // Move the whole baby in one arc instead of sliding under a CSS bounce.
+          const phase=Math.min(1,(now-bottomHop.startedAt)/700);
+          const travel=phase*phase*(3-2*phase);
+          win.webContents.send('baby:direction',bottomDirection<0?'left':'right');
+          placeVisible({x:bottomHop.from.x+(bottomHop.to.x-bottomHop.from.x)*travel,
+            y:bottomHop.from.y+(bottomHop.to.y-bottomHop.from.y)*phase-32*Math.sin(Math.PI*phase)},area);
+        } else {
+          bottomHop=null;
+          const target={x:cursor.x+(cursor.x+160<area.x+area.width?90:-160),y:cursor.y+50};
+          win.webContents.send('baby:direction',cursor.x<current.x+inset.width/2?'left':'right');
+          const distance=Math.hypot(target.x-current.x,target.y-current.y);
+          const fraction=Math.min(1,dt*.65/Math.max(1,distance));
+          placeVisible({x:current.x+(target.x-current.x)*fraction,y:current.y+(target.y-current.y)*fraction},area);
+        }
+      } else {
+        bottomHop=null;
+        if (!drag && (previous || changedLevel)) restoreHome();
+      }
       if (acting || previous || changedLevel) publishBaby(view);
     } catch { if (!win.isDestroyed()) win.webContents.send('baby:save-failed'); }
   }, 50);

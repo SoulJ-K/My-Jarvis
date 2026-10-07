@@ -104,18 +104,21 @@ export function startJarvis(options: {
     let controller: PanelController | undefined;
     let refreshAll = () => {};
     const hiddenBackend = { isSupported: () => false, create: () => { throw new Error('HIDDEN_NOTIFICATION_DISABLED'); } };
+    const acknowledgeNotification = (item: {kind:'timer'|'alarm'|'reminder';id:string}, round:number) => {
+      if (controller?.acknowledge(item,round) && currentStage==='baby') panels?.hideForResult();
+    };
     const notifications = timerNotifications(undefined, {
       ...(show ? {} : {backend:hiddenBackend}),
-      onClick: item => { if (item) controller?.acknowledge({kind:'timer',id:item.id},0); },
+      onClick: item => { if (item) acknowledgeNotification({kind:'timer',id:item.id},0); },
     });
     const scheduleNotices = scheduleNotifications(undefined, {
       ...(show && !options.notifySchedule ? {} : {backend:hiddenBackend}),
-      onClick: item => { controller?.acknowledge({kind:item.kind,id:item.id},0); },
+      onClick: item => { acknowledgeNotification({kind:item.kind,id:item.id},0); },
     });
     const followNotices = notificationQueue<FollowupNotice>(item => ({
       title: 'Jarvis Pet · 다시 알려드려요', body:item.title, silent:false,
     }), undefined, {backend: show ? {isSupported:()=>Notification.isSupported(),create:values=>new Notification(values)} : hiddenBackend,
-      onClick:item=>{controller?.acknowledge(item,item.round);} });
+      onClick:item=>{acknowledgeNotification(item,item.round);} });
     try {
       service = new TimerService(new TimerRepository(app.getPath('userData')),
         {wall:()=>Date.now(),monotonic:()=>performance.now()}, notifications.notify, ()=>refreshAll());

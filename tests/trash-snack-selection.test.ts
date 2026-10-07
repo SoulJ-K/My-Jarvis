@@ -203,3 +203,40 @@ test('candidate names remain literal and returned data cannot select another fil
   assert.equal((await f.service.confirm(confirmation(p.operationId))).status, 'completed');
   assert.equal(existsSync(chosen), false); assert.equal(readFileSync(other, 'utf8'), 'other');
 });
+
+test('app picker lists only direct regular files and names/opaque IDs; contents and paths stay private', async t => {
+  const f=fixture(t);f.file('가.txt');f.file('b.txt');
+  mkdirSync(path.join(f.root,'folder'));writeFileSync(path.join(f.root,'folder','nested.txt'),'keep');
+  symlinkSync(path.join(f.root,'b.txt'),path.join(f.root,'symlink'));
+  const linked=f.file('hard.txt');linkSync(linked,path.join(f.root,'hard-copy.txt'));
+  f.file('bad‮name.txt');
+  const choices=await f.service.listChoices();
+  assert.deepEqual(choices.map(c=>c.name).sort(),['b.txt','가.txt'].sort());
+  choices.forEach(c=>{assert.deepEqual(Object.keys(c).sort(),['id','name']);assert.notEqual(c.id,c.name);});
+  const p=await f.service.prepareChoice(choices.map(c=>c.id));
+  assert.equal(p.status,'confirmation-required');
+  assert.equal(existsSync(path.join(f.root,'b.txt')),true,'selection is not deletion');
+});
+
+test('picker rejects stale/replaced files, arbitrary paths, more than two IDs and stale list generations', async t => {
+  const f=fixture(t);const a=f.file('a.txt');f.file('b.txt');f.file('c.txt');
+  let list=await f.service.listChoices();
+  for (const ids of [[a],list.map(c=>c.id),[list[0].id,list[0].id]]) {
+    assert.equal((await f.service.prepareChoice(ids)).status,'blocked');
+  }
+  writeFileSync(a,'new content');
+  assert.equal((await f.service.prepareChoice([list.find(c=>c.name==='a.txt')!.id])).status,'blocked');
+  const previous=list;list=await f.service.listChoices();
+  assert.equal((await f.service.prepareChoice([previous[0].id])).status,'blocked');
+  const p=await f.service.prepareChoice([list.find(c=>c.name==='a.txt')!.id]);
+  assert.equal(p.status,'confirmation-required');
+  assert.equal(readFileSync(a,'utf8'),'new content');
+});
+
+test('picker distinguishes an empty trash from a missing/unreadable root and excludes nested contents', async t => {
+  const f=fixture(t);mkdirSync(path.join(f.root,'folder'));
+  writeFileSync(path.join(f.root,'folder','keep.txt'),'keep');
+  assert.deepEqual(await f.service.listChoices(),[]);
+  renameSync(f.root,f.root+'-moved');
+  await assert.rejects(f.service.listChoices());
+});

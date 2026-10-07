@@ -1,5 +1,5 @@
 import {
-  closeSync, constants, fstatSync, lstatSync, mkdtempSync, openSync, realpathSync,
+  closeSync, constants, promises, fstatSync, lstatSync, mkdtempSync, openSync, realpathSync,
   renameSync, rmdirSync, unlinkSync, type BigIntStats,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { TrashSnackService, type TrashSnackBackend, type TrashSnackEntry,
   type TrashSnackHooks, type TrashSnackSnapshot } from '../assistant/trash-snack';
-import type { TrashSnackCapabilities, TrashSnackPreparation } from '../shared/trash-snack';
+import type { TrashSnackCapabilities, TrashSnackPreparation, TrashSnackCandidate } from '../shared/trash-snack';
 
 /** No path/content logging. Only a relative preservation location is returned to UI. */
 export interface TrashSnackRecoveryNotice { folderName: string; fileName: string }
@@ -34,7 +34,8 @@ export function getTrashSnackCapabilities(): TrashSnackCapabilities {
  * Main-owned adapter. Tests use an isolated synthetic root; production must use
  * createTrashSnackService(), which never accepts a root from renderer/IPC.
  *
- * No global enumeration, recursive deletion or alias resolution. Finder aliases
+ * Lists only regular files directly in the home Trash on an explicit snack request.
+ * No recursive enumeration/deletion or alias resolution. Finder aliases
  * are ordinary files here: only the selected alias itself is removed, never its
  * target. Use Electron dialog's noResolveAliases option.
  *
@@ -51,6 +52,7 @@ export class SelectedTrashSnackBackend implements TrashSnackBackend {
   private notices: TrashSnackRecoveryNotice[] = [];
   private rootIdentity?: string;
   private frozen = false;
+  private choices = new Map<string,{file:string;identity:string}>();
   constructor(readonly root: string, private support = getTrashSnackCapabilities()) {}
   capabilities(): TrashSnackCapabilities { return { ...this.support }; }
   recoveryNotices(): TrashSnackRecoveryNotice[] { return this.notices.map(n => ({ ...n })); }
@@ -66,6 +68,43 @@ export class SelectedTrashSnackBackend implements TrashSnackBackend {
     }
     this.selected = files.map(file => ({ id: randomUUID(), file: file as string }));
     return true;
+  }
+
+  async listChoices(): Promise<TrashSnackCandidate[]> {
+    this.choices.clear();
+    if (this.frozen) throw new Error('Unresolved preservation');
+    this.checkRoot();
+    const result:TrashSnackCandidate[]=[];
+    const directory=await promises.opendir(this.root);
+    for await (const entry of directory) {
+      if (!entry.isFile() || !safeName(entry.name)) continue;
+      const file=path.join(this.root,entry.name);
+      try {
+        const s=stat(file);
+        if (!regular(s) || s.uid!==BigInt(process.getuid!()) || realpathSync(file)!==file) continue;
+        const id=randomUUID();
+        this.choices.set(id,{file,identity:identity(s)});
+        result.push({id,name:entry.name});
+      } catch { /* A disappearing or unreadable entry is not selectable. */ }
+      if (result.length%50===0) await new Promise<void>(resolve=>setImmediate(resolve));
+    }
+    this.checkRoot();
+    return result.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  }
+
+  resolveChoices(ids:unknown): string[] | null {
+    if (!Array.isArray(ids) || ids.length<1 || ids.length>2 ||
+      ids.some(id=>typeof id!=='string') || new Set(ids).size!==ids.length) return null;
+    try {
+      this.checkRoot();
+      const files:string[]=[];
+      for (const id of ids) {
+        const choice=this.choices.get(id);
+        if (!choice || identity(stat(choice.file))!==choice.identity) return null;
+        files.push(choice.file);
+      }
+      return files;
+    } catch { return null; }
   }
 
   private checkRoot(): BigIntStats {
@@ -158,6 +197,15 @@ export class SelectedTrashSnackBackend implements TrashSnackBackend {
 export class SelectedTrashSnackService extends TrashSnackService {
   constructor(private selectionBackend: SelectedTrashSnackBackend, hooks: TrashSnackHooks) {
     super(selectionBackend, hooks);
+  }
+  async listChoices(): Promise<TrashSnackCandidate[]> {
+    if (!this.canPrepareSelection()) throw new Error('SNACK_BUSY');
+    return this.selectionBackend.listChoices();
+  }
+  async prepareChoice(ids:unknown): Promise<TrashSnackPreparation> {
+    const files=this.selectionBackend.resolveChoices(ids);
+    if (!files) return {status:'blocked',reason:'changed'};
+    return this.prepareSelection(files);
   }
   selectionRoot(): string { return this.selectionBackend.root; }
   recoveryNotices(): TrashSnackRecoveryNotice[] { return this.selectionBackend.recoveryNotices(); }

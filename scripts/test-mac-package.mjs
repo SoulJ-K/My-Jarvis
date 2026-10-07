@@ -6,9 +6,15 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { packageMac } from './package-mac.mjs';
+import { packageMac, macBundleId, registerMacApp, registeredMacApps } from './package-mac.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const identityFixture = '/identity-check/profile';
+assert.equal(macBundleId({existingDirectory:identityFixture,directory:'/build/one'}),macBundleId({existingDirectory:identityFixture,directory:'/build/two'}));
+assert.notEqual(macBundleId({directory:'/build/one'}),macBundleId({directory:'/build/two'}));
+assert.notEqual(macBundleId({existingDirectory:identityFixture,directory:'/build/one'}),macBundleId({existingDirectory:'/identity-check/other',directory:'/build/one'}));
+assert.notEqual(macBundleId({validation:true,directory:'/build/one'}),macBundleId({directory:'/build/one'}));
+const lsregister = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
 const packaged = packageMac({ validation: true });
 try {
   const files = readdirSync(packaged.payload, { recursive: true, withFileTypes: true })
@@ -25,7 +31,7 @@ try {
   assert.deepEqual(readFileSync(dockHelper),readFileSync(path.join(root,'dist/native/jarvis-dock-snack.node')));
   assert.equal(createRequire(import.meta.url)(dockHelper).selfTest(), true);
   const identity = execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(packaged.bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
-  assert.equal(identity, 'local.jarvispet.validation');
+  assert.match(identity, /^local\.jarvispet\.validation\.[a-f0-9]{24}$/);
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   const result = spawnSync(packaged.executable, [], { env, encoding: 'utf8', timeout: 30000 });
@@ -46,7 +52,7 @@ const require = createRequire(import.meta.url);
 const { loadOrCreateEgg } = require('../dist/src/storage/pet-repository.js');
 const { TimerRepository } = require('../dist/src/storage/timer-repository.js');
 const directory = mkdtempSync(path.join(tmpdir(), "jarvis-existing-pet-'check-"));
-let existing;
+let existing; let replacement;
 try {
   assert.throws(() => packageMac({ existingDataDirectory: 'relative/path' }), /ABSOLUTE_PATH/);
   assert.throws(() => packageMac({ existingDataDirectory: directory }), /EXISTING_PET_NOT_FOUND/);
@@ -63,7 +69,21 @@ try {
   const files = readdirSync(existing.payload, { recursive: true });
   assert(files.every(file => !/\.(sqlite3?|db|env)$/.test(file)), 'no pet database goes into the app');
   const identity = execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(existing.bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
-  assert.equal(identity, 'local.jarvispet.preview', 'keep the existing local Preview notification identity');
+  assert.match(identity, /^local\.jarvispet\.companion\.[a-f0-9]{24}$/);
+  assert.notEqual(identity, 'local.jarvispet.preview', 'existing pet must not share legacy Preview identity');
+  assert.equal(identity, macBundleId({existingDirectory:canonicalDirectory,directory:existing.directory}));
+  const legacyRoutes = registeredMacApps('local.jarvispet.preview');
+  registerMacApp(existing.bundle);
+  assert.equal(registeredMacApps(identity).preferred, realpathSync(existing.bundle));
+  replacement = path.join(existing.directory, 'replacement', 'Jarvis Pet.app');
+  execFileSync('/usr/bin/ditto', [existing.bundle, replacement]);
+  registerMacApp(replacement);
+  assert.deepEqual(registeredMacApps(identity), { paths: [realpathSync(replacement)], preferred: realpathSync(replacement) });
+  registerMacApp(existing.bundle);
+  assert.deepEqual(registeredMacApps(identity), { paths: [realpathSync(existing.bundle)], preferred: realpathSync(existing.bundle) });
+  assert.deepEqual(registeredMacApps('local.jarvispet.preview'), legacyRoutes, 'unrelated legacy registrations remain unchanged');
+  assert.deepEqual(readFileSync(petFile), originalBytes, 'activation must not change pet data');
+  console.log('PASS: distinct preview/pet identities, stable same-pet identity, selected app routing, replacement routing and unrelated registrations preserved');
   const launcher = readFileSync(path.join(existing.payload, 'launch.cjs'), 'utf8');
   // A path may disappear between packaging and launch. The entry must not run.
   for (const invalid of ['missing', 'empty', 'directory', 'symlink']) {
@@ -112,6 +132,12 @@ startJarvis({show:false, onFailure: () => app.exit(1), onReady: async win => {
   assert.deepEqual(restored.all(), reserved, 'pending reservation survives unchanged'); restored.close();
   console.log('PASS: existing-pet path guards, no DB copy/write during packaging, same pet and pending timer after packaged startup');
 } finally {
-  if (existing) rmSync(existing.directory, { recursive: true, force: true });
+  if (existing) {
+    const registered = registeredMacApps(existing.bundleId).paths;
+    for (const candidate of [existing.bundle, replacement]) {
+      if (candidate && registered.includes(realpathSync(candidate))) execFileSync(lsregister, ['-u', candidate], {stdio:'pipe'});
+    }
+    rmSync(existing.directory, { recursive: true, force: true });
+  }
   rmSync(directory, { recursive: true, force: true });
 }

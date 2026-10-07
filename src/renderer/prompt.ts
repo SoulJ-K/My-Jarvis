@@ -84,7 +84,7 @@
   };
   const scheduleTime = (row: { localDateTime: string; timeZone: string; utcOffsetMinutes: number }) =>
     `${row.localDateTime} · ${row.timeZone}`;
-  function askPin(replace: () => Promise<void>) { pinReplacement = replace; pinPanel.hidden = false; cancelAutoClose(); }
+  function askPin(replace: () => Promise<void>) { pinReplacement = replace; pinPanel.hidden = false; cancelAutoClose(); pinPanel.scrollIntoView({ block: 'nearest' }); }
   document.querySelector<HTMLButtonElement>('#pin-replace')!.onclick = () => {
     const run = pinReplacement; pinReplacement = undefined; pinPanel.hidden = true;
     if (run) void run();

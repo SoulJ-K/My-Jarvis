@@ -13,17 +13,17 @@
       const state = await window.assistantPanel.read();
       if (reading !== version) return;
       const next = state.card;
-      if (next?.id !== card?.id || next?.kind !== card?.kind || next?.completed !== card?.completed) {
-        form.hidden = true; result.textContent = '';
+      if (next?.id !== card?.id || next?.kind !== card?.kind || next?.completed !== card?.completed || next?.round !== card?.round) {
+        form.hidden = true; form.reset(); result.textContent = '';
       }
       card = next;
       if (!card) return;
       document.body.dataset.round = String(card.round);
       title.textContent = card.title;
-      count.textContent = card.completed ? '완료했어요' : card.count > 1 ? `기다리는 일 ${card.count}개` : '이 일은 마치셨나요?';
+      count.textContent = card.completed ? '완료했어요' : card.count > 1 ? `기다리는 일 ${card.count}개` : '';
+      count.hidden = count.textContent === '';
       answers.hidden = card.completed || !form.hidden;
       undo.hidden = !card.completed || !card.undoUntil || card.undoUntil <= Date.now();
-      document.querySelector<HTMLElement>('#more')!.hidden = card.completed;
     } catch { result.textContent = '상태를 읽지 못했어요. 잠시 후 다시 확인해 주세요.'; }
   };
   async function action(type: 'done' | 'undo' | 'cancel' | 'later', delayMs?: number) {
@@ -44,6 +44,7 @@
   undo.onclick = () => { void action('undo'); };
   document.querySelector<HTMLButtonElement>('#cancel')!.onclick = () => { void action('cancel'); };
   document.querySelector<HTMLButtonElement>('#later')!.onclick = () => { form.hidden = false; answers.hidden = true; };
+  document.querySelector<HTMLButtonElement>('#back')!.onclick = () => { form.hidden = true; answers.hidden = false; };
   document.querySelectorAll<HTMLButtonElement>('[data-minutes]').forEach(button => {
     button.onclick = () => { void action('later', Number(button.dataset.minutes) * 60_000); };
   });

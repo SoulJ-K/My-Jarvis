@@ -1,10 +1,50 @@
 import { cpSync, existsSync, lstatSync, realpathSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import electron from 'electron';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+
+// Existing pets have a stable identity per canonical data directory. Temporary
+// previews/validation builds get separate identities, never the user's identity.
+export function macBundleId({ validation = false, existingDirectory, directory }) {
+  const kind = existingDirectory ? 'companion' : validation ? 'validation' : 'preview';
+  const key = existingDirectory ?? directory;
+  if (!path.isAbsolute(key ?? '')) throw new Error('IDENTITY_REQUIRES_ABSOLUTE_PATH');
+  return `local.jarvispet.${kind}.${createHash('sha256').update(key).digest('hex').slice(0, 24)}`;
+}
+const lsregister = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+export function registeredMacApps(bundleId) {
+  const script = `ObjC.import('AppKit'); function run(args) {
+    const workspace = $.NSWorkspace.sharedWorkspace;
+    const urls = workspace.URLsForApplicationsWithBundleIdentifier(args[0]);
+    const preferred = workspace.URLForApplicationWithBundleIdentifier(args[0]);
+    return JSON.stringify({ paths: urls ? ObjC.deepUnwrap(urls.valueForKey('path')) : [],
+      preferred: preferred.isNil() ? null : ObjC.unwrap(preferred.path) });
+  }`;
+  return JSON.parse(execFileSync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script, bundleId], { encoding: 'utf8' }));
+}
+/** Explicit activation only: keep old bundles/data, change only this identity's routing. */
+export function registerMacApp(bundle) {
+  bundle = realpathSync(bundle);
+  const bundleId = execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
+  if (!/^local\.jarvispet\.(companion|preview|validation)\.[a-f0-9]{24}$/.test(bundleId)) throw new Error('SCOPED_APP_ID_REQUIRED');
+  execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle], { stdio: 'pipe' });
+  const previous = registeredMacApps(bundleId).paths;
+  try {
+    for (const old of previous) if (old !== bundle) execFileSync(lsregister, ['-u', old], { stdio: 'pipe' });
+    execFileSync(lsregister, ['-f', bundle], { stdio: 'pipe' });
+    const current = registeredMacApps(bundleId);
+    if (current.preferred !== bundle || current.paths.some(p => p !== bundle)) throw new Error('APP_ROUTE_VERIFICATION_FAILED');
+    return { bundleId, bundle, previous };
+  } catch (error) {
+    execFileSync(lsregister, ['-u', bundle], { stdio: 'pipe' });
+    for (const old of previous) if (existsSync(old)) execFileSync(lsregister, ['-f', old], { stdio: 'pipe' });
+    throw error;
+  }
+}
 
 // Local preview only. This is deliberately not a release-signing pipeline:
 // no identity/keychain access, hardened runtime, notarization or installation.
@@ -31,8 +71,8 @@ export function packageMac({ validation = false, existingDataDirectory } = {}) {
   mkdirSync(out, { recursive: true });
   // Every build gets a fresh directory. Never overwrite an existing preview.
   const directory = mkdtempSync(path.join(out, 'mac-preview-'));
-  const name = validation ? 'Jarvis Pet Validation' : 'Jarvis Pet Preview';
-  const bundleId = validation ? 'local.jarvispet.validation' : 'local.jarvispet.preview';
+  const name = validation ? 'Jarvis Pet Validation' : existingDirectory ? 'Jarvis Pet' : 'Jarvis Pet Preview';
+  const bundleId = macBundleId({ validation, existingDirectory, directory });
   const bundle = path.join(directory, name + '.app');
   execFileSync('/usr/bin/ditto', [source, bundle]);
   const contents = path.join(bundle, 'Contents');
@@ -105,11 +145,16 @@ require('./${pkg.main}');
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
+  if (args.length === 2 && args[0] === '--activate') {
+    console.log(JSON.stringify(registerMacApp(args[1])));
+    process.exit(0);
+  }
   if (args.length !== 0 && (args.length !== 2 || args[0] !== '--existing-data')) {
-    throw new Error('USAGE: package-mac.mjs [--existing-data /absolute/path/to/data]');
+    throw new Error('USAGE: package-mac.mjs [--existing-data /absolute/path/to/data] | --activate /absolute/path/to/app');
   }
   const result = packageMac({ existingDataDirectory: args[1] });
   console.log(`LOCAL_PREVIEW_APP:${result.bundle}`);
+  console.log('ACTIVATION: run package-mac.mjs --activate with this app path before launch; packaging alone does not change app registration');
   console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
   console.log(args.length
     ? 'DATA:explicit existing pet directory; no pet data copied; app has NOT been launched'

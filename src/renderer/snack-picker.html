@@ -1,0 +1,10 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'">
+<title>아기에게 줄 간식</title><link rel="stylesheet" href="prompt.css"><link rel="stylesheet" href="snack-picker.css"></head>
+<body><main>
+<header><h1>휴지통에서 간식 고르기</h1><p>아기에게 줄 파일을 최대 2개 골라 주세요.<br>다음 화면에서 영구삭제 여부를 확인합니다.</p></header>
+<label for="search">파일 이름 찾기</label><input id="search" type="search" autocomplete="off">
+<form id="picker-form"><div id="files" role="group" aria-label="휴지통 파일" aria-describedby="selection"></div>
+<p id="message" role="status" aria-live="polite">파일 목록을 불러오고 있어요.</p>
+<footer><p id="selection" aria-live="polite">0 / 2개 선택</p><div class="actions"><button id="cancel" type="button" class="secondary">취소</button><button id="next" type="submit" disabled>선택한 파일 확인</button></div></footer>
+</form></main><script src="snack-picker.js"></script></body></html>

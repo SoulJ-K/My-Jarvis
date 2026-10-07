@@ -262,20 +262,29 @@ app.whenReady().then(async () => {
   assert.equal(await run('getComputedStyle(document.querySelector(".shell")).animationName'), 'baby-joy');
   assert.equal(socialCount(), beforeVisualOnly, 'presentation-only wake and return do not create experience');
   let visualRevision = visualSleep.revision + 2;
-  for (const x of [0, BABY_STAGE.width]) for (const y of [0, BABY_STAGE.height]) {
-    const position = layoutBabyAt({ x, y }, { x: 0, y: 0, width: BABY_STAGE.width, height: BABY_STAGE.height }).position;
-    await run(`document.querySelector('#egg').style.transition = 'none';
-      document.querySelector('#pet-name').textContent = '아주긴이름으로가장자리확인';`);
+  for (const level of [0,1,2] as const) for (const x of [0, BABY_STAGE.width]) for (const y of [0, BABY_STAGE.height]) {
+    const position = layoutBabyAt({ x, y }, { x: 0, y: 0, width: BABY_STAGE.width, height: BABY_STAGE.height },level).position;
+    await run(`document.querySelector('#pet-name').textContent = '아주긴이름으로가장자리확인';`);
     // Exercise the real renderer layout, not manual CSS offsets that bypass it.
     win.webContents.send('baby:state', { ...visualSleep, revision: ++visualRevision,
-      behavior: 'resting', reunion: false, position });
+      behavior: 'resting', reunion: false, position, attention:{...visualSleep.attention,level} });
     await until(() => run(`Math.abs(document.querySelector('#egg').getBoundingClientRect().left - ${position.x}) < 1`));
+    const settled=await run(`(() => {const b=document.querySelector('#egg').getBoundingClientRect();return {x:b.x,y:b.y};})()`);
+    await new Promise(resolve=>setTimeout(resolve,160));
+    const after=await run(`(() => {const b=document.querySelector('#egg').getBoundingClientRect();return {x:b.x,y:b.y};})()`);
+    assert.deepEqual(after,settled,'edge placement must not slide after release');
     assert.equal(await attached(), true, 'long name follows the body while clamping inside each corner');
+    assert.equal(await run(`(() => {
+      const a=document.querySelector('#pet-name').getBoundingClientRect();
+      const b=document.querySelector('#emotion-orb').getBoundingClientRect();
+      return a.right<=b.left || b.right<=a.left || a.bottom<=b.top || b.bottom<=a.top;
+    })()`),true,'name and orb must never overlap at a corner');
     assert.equal(await run(`(() => {
       const orb = document.querySelector('#emotion-orb'); const box = orb.getBoundingClientRect();
       return !orb.hidden && box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
     })()`), true, 'the same always-visible orb remains inside every stage corner');
   }
+  writeFileSync(path.join(tmpdir(),'jarvis-baby-audit-edge.png'),(await win.webContents.capturePage()).toPNG());
   win.destroy(); db.close(); repo.close(); lifecycle.close();
   clearTimeout(timeout);
   console.log('PASS: baby pointer/feed/storage checks; night/late-night/morning, transient return/reload/lock/resume, sleep priority, reduced motion, screenshots');

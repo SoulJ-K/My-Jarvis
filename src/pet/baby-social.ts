@@ -33,13 +33,14 @@ export function validateBabySocial(s: BabySocial): void {
 /** Only exact short utterances; never forwards unknown text to a tool. */
 export function parseBabyInput(input: unknown): SocialCommand | null {
   if (typeof input !== 'string' || input.length > 80) throw new Error('BABY_INPUT_INVALID');
-  const text = input.trim();
-  if (text === '뭐해') return { type: 'what-doing' };
+  // Normalize only the approved short expressions; never strip arbitrary punctuation or commands.
+  const text = input.trim().replace(/[ \t]+/g, '');
+  if (['뭐해', '뭐해?', '뭐해？'].includes(text)) return { type: 'what-doing' };
   if (text === '배고파') return { type: 'hungry' };
-  if (text === '보고싶었어') return { type: 'missed' };
+  if (['보고싶었어', '보고싶었어?', '보고싶었어？'].includes(text)) return { type: 'missed' };
   if (text === '안녕') return { type: 'greet' };
   if (text === '잘했어') return { type: 'praise' };
-  if (text === '구슬 놀이') return { type: 'orb' };
+  if (text === '구슬놀이') return { type: 'orb' };
   if (text === '그만') return { type: 'stop' };
   return null;
 }

@@ -1,6 +1,6 @@
 import { copyFileSync } from 'node:fs';
 
-for (const file of ['index.html', 'styles.css', 'wake-motion.css', 'prompt.html', 'prompt.css', 'timer-notice.html', 'hatch-sequence.css', 'hatch.html', 'result-card.html', 'result-card.css']) {
+for (const file of ['index.html', 'styles.css', 'wake-motion.css', 'prompt.html', 'prompt.css', 'timer-notice.html', 'hatch-sequence.css', 'hatch.html', 'result-card.html', 'result-card.css', 'snack-picker.html', 'snack-picker.css']) {
   copyFileSync(`src/renderer/${file}`, `dist/src/renderer/${file}`);
 }
 

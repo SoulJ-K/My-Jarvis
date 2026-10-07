@@ -119,8 +119,8 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 #egg.baby-idle .shell { scale: var(--attention-scale, 1); transform-origin: center bottom;
   transition: scale .25s ease, background-color .25s ease, border-color .25s ease; }
 #egg.baby-idle[data-attention="1"] .shell { background-color: #deb9b0; border-color: #966c68; }
-#egg.baby-idle[data-attention="2"] .shell { background-color: #db9290; border-color: #925457; }
-#egg.baby-idle[data-attention-act=bottom] .shell { animation: attention-hop .8s ease-in-out infinite; }
+#egg.baby-idle[data-attention="2"] .shell { background-color: #ed493c; border-color: #9e2723; }
+#egg.baby-idle[data-attention-act=bottom] .shell { animation: none; }
 #egg.baby-idle[data-attention-act=cursor] .shell::before { translate: -3px 0; }
 #egg.baby-idle[data-attention-act]:not([data-attention-act=""]) { transition: none; }
 #emotion-orb[data-expression=refusal] { background: #da6d69; border-color: #873c40; }
@@ -134,7 +134,6 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 #egg #pet-name { left: clamp(calc(64px - var(--body-x, 36px)), 52px, calc(356px - var(--body-x, 36px)));
   top: clamp(calc(4px - var(--body-y, 152px)), 100px, calc(274px - var(--body-y, 152px))); }
 #sleep-symbol { left: clamp(calc(4px - var(--body-x, 36px)), 93px, calc(394px - var(--body-x, 36px))); top: max(0px, calc(4px - var(--body-y, 152px))); }
-@keyframes attention-hop { 50% { transform: translateY(-14px); } }
 @media (prefers-reduced-motion: reduce) {
   #egg.baby-idle .shell, #egg.baby-idle[data-attention-act] .shell { animation: none; transition: none; }
 }
@@ -145,3 +144,7 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 
 #egg.baby-idle[data-dragging=true], #egg.baby-idle.pressed { transition: none; }
 #egg.baby-idle[data-attention-act=cursor][data-direction=right] .shell::before { translate: 3px 0; }
+
+#emotion-orb:not([data-play=true]) { animation: orb-idle-roll 3s ease-in-out infinite alternate; }
+@keyframes orb-idle-roll { to { transform: translateX(-6px) rotate(-28deg); } }
+@media (prefers-reduced-motion: reduce) { #emotion-orb:not([data-play=true]) { animation: none; } }

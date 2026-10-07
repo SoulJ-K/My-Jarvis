@@ -30,3 +30,10 @@ export type TrashSnackExecution = TrashSnackFailure | {
   mealReady: boolean;
 };
 export type TrashSnackMealResult = 'recorded' | 'not-ready' | 'unknown';
+
+/** Picker displays names only; opaque IDs are mapped to paths exclusively in main. */
+export interface TrashSnackPickerAPI {
+  read(): Promise<TrashSnackCandidate[]>;
+  choose(ids:string[]): Promise<void>;
+  cancel(): Promise<void>;
+}

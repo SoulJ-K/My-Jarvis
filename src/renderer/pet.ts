@@ -167,12 +167,13 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   // Wake presents first; the latest meal, distance or return expression follows.
   const reunion = Boolean(!waking && state.reunion && (state.behavior === 'resting' || state.behavior === 'drowsy') && state.social.motion !== 'away');
   egg.dataset.reunion = String(reunion);
-  if (firstFrame) {
+  const snapPlacement = firstFrame || !state.meal && (displayedBabyPosition.x !== state.position.x || displayedBabyPosition.y !== state.position.y);
+  if (snapPlacement) {
     const shadow = document.querySelector<HTMLElement>('.shadow')!;
     egg.style.transition = 'none'; shadow.style.transition = 'none';
     moveBaby(state.position);
     void egg.getBoundingClientRect();
-    egg.style.removeProperty('transition'); shadow.style.removeProperty('transition');
+    // Leave transition disabled until all position and social offsets are committed below.
   }
   if (waking) {
     // Keep the body at its sleeping location until the brief wake movement ends.
@@ -221,16 +222,25 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   orb.dataset.refusing = String(!state.social.accepting);
   orb.dataset.play = String(!waking && state.social.motion === 'play-orb');
   const position = displayedBabyPosition;
-  const aboveFits = position.y >= 36;
-  const orbX = aboveFits ? position.x + 40 : position.x < 210 ? position.x + 110 : position.x - 30;
-  orb.style.left = `${Math.max(28, Math.min(394, orbX)) - position.x}px`;
-  orb.style.top = `${Math.max(4, Math.min(274, aboveFits ? position.y - 32 : position.y + 24)) - position.y}px`;
-  if (state.social.motion === 'play-orb') {
-    orb.style.top = `${Math.max(4, Math.min(274, position.y + 74)) - position.y}px`;
-    orb.style.left = `${Math.max(28, Math.min(394, position.x + 90)) - position.x}px`;
-  }
+  // Place the orb beside the feet. Choose the roomy side at an edge and keep a
+  // stable per-pet preference in the middle; the name owns the above/below row.
+  const scale = 1 + state.attention.level / 10;
+  const insetX = (104 - 83.2 * scale) / 2;
+  const preferredRight = [...(state.social.orb?.id ?? '')].reduce((sum, c) => sum + c.charCodeAt(0), 0) % 2 === 0;
+  const leftX = position.x + insetX - 40;
+  const rightX = position.x + 104 - insetX + (state.social.motion === 'play-orb' ? 32 : 18);
+  const useRight = leftX < 28 || rightX <= 394 && preferredRight;
+  orb.style.left = `${Math.max(28, Math.min(394, useRight ? rightX : leftX)) - position.x}px`;
+  orb.style.top = `${Math.max(4, Math.min(272, position.y + 68)) - position.y}px`;
   const name = document.querySelector<HTMLElement>('#pet-name')!;
-  name.style.top = `${position.y + 121 <= 296 ? 100 : Math.max(4, position.y - 26) - position.y}px`;
+  name.style.top = `${position.y + 121 <= 296 ? 100 : Math.max(4, position.y + 92 - 73.6 * scale - 29) - position.y}px`;
+  if (snapPlacement) {
+    // OS window coordinates and the body offset must settle in the same frame,
+    // especially when a native Dock drag ends near a screen edge.
+    void egg.getBoundingClientRect();
+    egg.style.removeProperty('transition');
+    document.querySelector<HTMLElement>('.shadow')!.style.removeProperty('transition');
+  }
   if (babySaveFailed) { document.querySelector('#save-status')!.textContent = ''; babySaveFailed = false; }
 }
 function showBabyFailure() {

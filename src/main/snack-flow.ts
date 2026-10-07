@@ -1,3 +1,4 @@
+import { chooseSnackFiles } from './snack-picker-window';
 import { dialog, type BrowserWindow } from 'electron';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { createTrashSnackService, type SelectedTrashSnackService } from './trash-snack';
@@ -27,11 +28,12 @@ export async function requestSnack(baby: BabyLifeRepository, owner: BrowserWindo
   }
   active.add(baby);
   try {
-    const selection=await dialog.showOpenDialog(owner,{title:'아기에게 줄 휴지통 파일 선택',
-      message:'내 휴지통의 일반 파일을 최대 2개 골라 주세요. 다음 화면에서 영구삭제를 확인합니다.',
-      defaultPath:service.selectionRoot(),properties:['openFile','multiSelections','noResolveAliases','showHiddenFiles']});
-    if (selection.canceled) return {ok:false,message:'간식 선택을 취소했어요. 파일은 그대로입니다.'};
-    const proposal=await service.prepareSelection(selection.filePaths);
+    let choices;
+    try { choices=await service.listChoices(); }
+    catch { return {ok:false,message:'휴지통 목록을 읽지 못했어요. 접근 권한을 확인해 주세요. 파일은 삭제하지 않았습니다.'}; }
+    const selection=await chooseSnackFiles(owner,choices);
+    if (selection===null) return {ok:false,message:'간식 선택을 취소했어요. 파일은 그대로입니다.'};
+    const proposal=await service.prepareChoice(selection);
     if (proposal.status==='blocked') return {ok:false,message:messages[proposal.reason]};
     const confirmation=await dialog.showMessageBox(owner,{type:'warning',title:'이 파일을 간식으로 줄까요?',
       message:'선택한 파일을 영구삭제합니다. 되돌릴 수 없습니다.',

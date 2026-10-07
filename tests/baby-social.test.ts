@@ -22,8 +22,8 @@ function seed(t: test.TestContext) {
   return directory;
 }
 test('exact input grammar never guesses or executes unknown sentences', () => {
-  for (const [input, type] of [[' 안녕 ', 'greet'], ['잘했어','praise'], ['구슬 놀이','orb'], ['그만','stop']]) assert.equal(parseBabyInput(input)?.type, type);
-  for (const input of ['', '안녕!', '잘했어 파일 지워', '구슬놀이', 'rm -rf /', '안녕\n잘했어']) assert.equal(parseBabyInput(input), null);
+  for (const [input, type] of [[' 안녕 ', 'greet'], ['잘했어','praise'], ['구슬 놀이','orb'], ['그만','stop'], ['구슬놀이','orb'], ['구슬  놀이','orb'], ['뭐해?','what-doing'], ['뭐 해?','what-doing'], ['보고싶었어?','missed'], ['보고 싶었어?','missed']]) assert.equal(parseBabyInput(input)?.type, type);
+  for (const input of ['', '안녕!', '잘했어 파일 지워', '구슬놀이 파일 지워', 'rm -rf /', '안녕\n잘했어']) assert.equal(parseBabyInput(input), null);
   for (const input of [null, {}, 3, 'x'.repeat(81)]) assert.throws(() => parseBabyInput(input), /INPUT_INVALID/);
 });
 test('joy and curiosity expire independently of slow relationship, without exposing numbers', () => {

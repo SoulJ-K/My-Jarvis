@@ -26,7 +26,8 @@ export async function createPromptWindows(service: TimerService, showNotices = t
   let hideNotice: ReturnType<typeof setTimeout> | undefined;
   const announced = new Set<string>();
   const valid = (event: IpcMainInvokeEvent, allowNotice = false) => {
-    const target = event.sender === prompt.webContents ? prompt : allowNotice && event.sender === notice.webContents ? notice : undefined;
+    const target = !prompt.isDestroyed() && event.sender === prompt.webContents ? prompt :
+      allowNotice && !notice.isDestroyed() && event.sender === notice.webContents ? notice : undefined;
     return target && !target.isDestroyed() && event.senderFrame === target.webContents.mainFrame &&
       event.senderFrame?.url === pathToFileURL(target === prompt ? page : noticePage).href;
   };
@@ -138,6 +139,8 @@ export async function createPromptWindows(service: TimerService, showNotices = t
   };
   return {
     prompt, notice, refresh,
+    // Notification results temporarily dismiss the panel, never discard its draft.
+    hideForResult() { if (!disposed && !prompt.isDestroyed()) prompt.hide(); },
     open() {
       const opening = !prompt.isVisible();
       if (!opening && prompt.isFocused()) return;

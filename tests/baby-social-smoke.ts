@@ -39,6 +39,13 @@ async function until(check: () => Promise<boolean>) {
   for (let i = 0; i < 100; i++) { if (await check()) return; await pause(); }
   throw new Error('SOCIAL_UI_DID_NOT_SETTLE');
 }
+const notifications = require('../src/main/notifications') as typeof import('../src/main/notifications');
+const originalNotifications = notifications.timerNotifications;
+let notificationClick: ((item: import('../src/shared/timer').TimerRecord | undefined) => void) | undefined;
+notifications.timerNotifications = (failure, options) => {
+  notificationClick = options?.onClick;
+  return originalNotifications(failure, options);
+};
 const startup = require('../src/main/app') as typeof import('../src/main/app');
 const start = startup.startJarvis;
 startup.startJarvis = () => start({ show: false, onReady: async win => {
@@ -92,7 +99,16 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     screen.getCursorScreenPoint = () => ({ x: -10000, y: -10000 });
     await until(() => pet('document.querySelector("#egg").dataset.social !== "chase"'));
     now += T.playGap;
-    assert.equal((await submit('구슬 놀이')).ok, true);
+    // Use the displayed examples through the production form submit handler, not an IPC shortcut.
+    for (const input of ['뭐해?', '보고싶었어?', '구슬놀이']) {
+      await run(`document.querySelector('#request').value=${JSON.stringify(input)};
+        document.querySelector('#request').dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#request').focus()`);
+      await run("document.querySelector('#timer-form').requestSubmit()");
+      await pause();
+      await until(() => run('!document.querySelector("#submit").disabled'));
+      assert.equal(await run('document.querySelector("#request").getAttribute("aria-invalid")'), 'false', input);
+      assert.equal(await run('document.querySelector("#request").value'), '', input);
+    }
     await until(() => pet('document.querySelector("#emotion-orb").dataset.play === "true"'));
     await capture('orb');
     assert.equal((await submit('그만')).ok, true);
@@ -192,6 +208,22 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal(opens, 3, 'explicitly closed prompt can be opened again');
     assert.equal(promptVisible, true);
     assert.equal(promptFocused, true);
+    // Invoke the callback registered by the production app, without sending an OS notification.
+    await run(`document.querySelector('#request').value='작성 중인 부탁';
+      document.querySelector('#request').dispatchEvent(new Event('input',{bubbles:true}));
+      document.querySelector('#request').focus(); document.querySelector('#request').setSelectionRange(1,3)`);
+    const due = (await run('window.timerPanel.read()'))[0];
+    assert.ok(notificationClick);
+    notificationClick(due);
+    await until(async () => !promptVisible);
+    assert.equal((await run('window.assistantPanel.read()')).card.id, due.id);
+    await clickPet(3);
+    await pause();
+    assert.equal(promptVisible, true);
+    assert.deepEqual(await run(`(() => { const i=document.querySelector('#request');
+      return [i.value,i.selectionStart,i.selectionEnd]; })()`), ['작성 중인 부탁',1,3],
+      'notification click hides the writing panel without discarding its draft');
+    console.log('PASS: production notification callback hides input and preserves draft/caret on reopening');
     db.close(); clearTimeout(timeout);
     console.log('PASS: production baby input/IME, exact grammar, minimal experience, failed save/retry, IPC sender/frame/arguments, same orb, cursor departure, orb/stop, space/recovery, timer independence, screenshots');
     app.quit();
