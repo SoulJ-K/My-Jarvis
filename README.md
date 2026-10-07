@@ -134,7 +134,7 @@ npm start
 ## 더 알아보기
 
 - [10분 발표 자료 · PDF](docs/presentation/Jarvis-Pet-Presentation.pdf): 프로젝트의 출발점, 구현 구조, 보완점과 성장 방향
-- [웹슬라이드와 발표 메모](docs/presentation/README.md): 실제 시연 GIF가 포함된 발표 자료의 실행 방법
+- [웹슬라이드 바로 보기](https://soulj-k.github.io/My-Jarvis/): 다운로드 없이 실제 시연 GIF와 발표 메모 열기 · [사용 안내](docs/presentation/README.md)
 - [제품 기획서](docs/Jarvis_Pet_PRD.md): 사용자 문제, 요구사항과 개발 범위
 - [캐릭터·성장 설계](docs/Jarvis_Pet_Character_and_Growth_Design.md): 탄생, 생활, 감정과 성장 방향
 - [기술 설계](docs/Jarvis_Pet_Technical_Design.md): 구현 구조, 실행 방법과 검증 상태
