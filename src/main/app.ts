@@ -26,6 +26,8 @@ import { DEFAULT_HATCH_READINESS_POLICY, type HatchReadinessPolicy } from '../pe
 // No test settings or storage paths are exposed to the renderer.
 export function startJarvis(options: {
   show?: boolean;
+  /** Main-only optional geometry for isolated appearance trials. */
+  appearanceTrial?: import('./windows').PetAppearanceTrial;
   notifySchedule?: NotifySchedule;
   /** Override the approved product policy only in isolated main-process checks. */
   hatchPolicy?: HatchReadinessPolicy;
@@ -172,7 +174,7 @@ export function startJarvis(options: {
     () => panels?.open(), () => !quitting, show ? async () => {
       const reply=await requestSnack(baby,win,true);
       if(win && !win.isDestroyed()) await dialog.showMessageBox(win,{type:reply.ok?'info':'warning',title:'휴지통 간식',message:reply.message,buttons:['확인']});
-    } : undefined, previousBabyObservation);
+    } : undefined, previousBabyObservation, undefined, options.appearanceTrial);
     win.on('closed', () => {
       if (!quitting) recordPetDiagnostic('pet_window_closed_unexpectedly');
       app.quit();

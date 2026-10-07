@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Jarvis · 두 아기 외형 시험</title>
+  <link rel="stylesheet" href="trial.css">
+  <script defer src="assets.js"></script>
+  <script defer src="geometry.js"></script>
+  <script defer src="facing.js"></script>
+  <script defer src="trial.js"></script>
+</head>
+<body>
+<main>
+  <header><p class="eyebrow">MY JARVIS · 외형 시험</p><h1>같은 아기, 다른 자세.</h1>
+    <p>쉬면 나를 바라보고, 움직이면 그쪽을 바라봅니다. 현재 키우는 펫과 연결되지 않는 시험 화면입니다.</p>
+  </header>
+  <div class="toolbar">
+    <label>표시 크기 <select id="size"><option value="73.6">현재 몸 높이 기준 · 73.6px</option><option value="96">확대 비교 · 96px</option><option value="144">자세 확인 · 144px</option></select></label>
+    <label>배경 <select id="background"><option value="light">밝은 배경</option><option value="dark">어두운 배경</option></select></label>
+    <label><input id="bounds" type="checkbox"> 몸의 바깥 경계 보기</label>
+  </div>
+  <div id="trials" class="trials"></div>
+  <p id="status" class="status" role="status">이미지를 준비하고 있습니다.</p>
+  <section class="comparison"><h2>정면과 양쪽 모습</h2><p>기본 자세 높이 96px 기준입니다. 좌우는 각각 그린 모습이며, 수면은 기존의 편안한 자세를 유지합니다.</p><div id="contact-sheet"></div></section>
+  <footer>입 없는 아기 · 외부 AI 없이 표시 · 저장 자료 접근 없음<br>행동에 따른 방향과 이동 순서를 시험합니다. 보행·섭취·구슬놀이 전체 동작과 부화는 미연결입니다.</footer>
+</main>
+<template id="trial-template">
+  <article class="trial">
+    <div class="trial-heading"><h2></h2><span class="badge">독립 시험 개체</span></div>
+    <div class="activities" role="group" aria-label="행동으로 방향 시험">
+      <button type="button" data-action="rest">쉬기</button>
+      <button type="button" data-action="travel">이동 보기</button>
+      <button type="button" data-action="food">먹이 바라보기</button>
+      <button type="button" data-action="orb">구슬 바라보기</button>
+    </div>
+    <div class="poses" role="group" aria-label="자세 선택">
+      <button type="button" data-pose="stand" aria-pressed="true">기본</button>
+      <button type="button" data-pose="sit" aria-pressed="false">앉기</button>
+      <button type="button" data-pose="sleep" aria-pressed="false">수면</button>
+    </div>
+    <div class="facings" role="group" aria-label="바라보는 방향 비교">
+      <button type="button" data-facing="left" aria-pressed="false">왼쪽 보기</button>
+      <button type="button" data-facing="front" aria-pressed="true">정면 보기</button>
+      <button type="button" data-facing="right" aria-pressed="false">오른쪽 보기</button>
+    </div>
+    <div class="canvas-wrap"><canvas width="840" height="600" tabindex="0" role="img"></canvas></div>
+    <p class="hint">행동을 고르면 방향은 자동으로 정합니다. ‘기본·앉기·수면’과 ‘왼쪽·정면·오른쪽 보기’는 비교용입니다.</p>
+    <p class="activity-status" aria-live="polite"></p>
+    <div class="placements" role="group" aria-label="위치 선택">
+      <button data-place="0,0" aria-label="왼쪽 위">↖</button><button data-place="0.5,0" aria-label="위쪽">↑</button><button data-place="1,0" aria-label="오른쪽 위">↗</button>
+      <button data-place="0,0.5" aria-label="왼쪽">←</button><button data-place="0.5,0.5" aria-label="가운데">중앙</button><button data-place="1,0.5" aria-label="오른쪽">→</button>
+      <button data-place="0,1" aria-label="왼쪽 아래">↙</button><button data-place="0.5,1" aria-label="아래쪽">↓</button><button data-place="1,1" aria-label="오른쪽 아래">↘</button>
+    </div>
+    <p class="measurement"></p>
+  </article>
+</template>
+</body>
+</html>

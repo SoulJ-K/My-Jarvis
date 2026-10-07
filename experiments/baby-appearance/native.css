@@ -1,0 +1,15 @@
+/* Only copied into the isolated trial runtime. Original product styles remain intact. */
+html:not([data-appearance-ready]) main { visibility: hidden; }
+#egg.baby-idle canvas.shell { position:absolute; margin:0; border:0; border-radius:0; background:transparent; box-shadow:none; transition:none; }
+#egg.baby-idle[data-life=sleeping] canvas.shell { transform:none; }
+#egg canvas.shell::before, #egg canvas.shell::after { content:none; }
+#egg #emotion-orb { animation:none; }
+#egg #pet-name { font-size:11px; }
+html[data-stage=baby] .shadow { display:none; }
+
+#food { padding:16px; }
+#food span { width:12px; height:12px; border-width:1px; border-radius:4px; }
+
+#egg #emotion-orb[data-play=true] { animation:trial-orb-play 1.4s ease-in-out infinite alternate; }
+@keyframes trial-orb-play { to { transform:translateY(var(--trial-orb-lift, 0px)) rotate(-25deg); } }
+@media (prefers-reduced-motion:reduce) { #egg #emotion-orb[data-play=true] { animation:none; } }
