@@ -1,4 +1,4 @@
-import { BABY_STAGE, babyApproachDuration, babyDayPeriod, babyTargetForFood, validFoodPoint, babyBodyInset, layoutBabyAt, BabyAttentionMotion,
+import { BABY_STAGE, babyApproachDuration, babyDayPeriod, babyTargetForFood, validFoodPoint, babyBodyInset as defaultBodyInset, layoutBabyAt as defaultLayout, BabyAttentionMotion,
   type BabyPosition } from '../pet/baby-life';
 import type { BabyLifeRepository } from '../storage/baby-life-repository';
 import { app, BrowserWindow, ipcMain, screen, powerMonitor, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
@@ -62,9 +62,25 @@ export function initialPosition(stage: 'egg' | 'baby' = 'egg') {
     y: area.y + area.height - size.height - 32 }, area, size);
 }
 
+/** Optional main-owned geometry for isolated appearance trials; ordinary startup leaves it unset. */
+export interface PetAppearanceTrial {
+  inset: (level: 0 | 1 | 2) => Electron.Rectangle;
+  attach: (win: BrowserWindow, change: (update: () => void) => void) => void;
+}
+
 export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind: EggCareKind) => void = () => {},
   currentPet: () => EggSnapshot & { name?: string | null } = () => pet, baby?: BabyLifeRepository,
-  onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true, onDockSnack?: () => Promise<unknown>, previousBabyObservation?: number | null, onDockDiagnostic?: (info: DockSnackDiagnostic) => void) {
+  onBabyClick: () => void = () => {}, shouldRecover: () => boolean = () => true, onDockSnack?: () => Promise<unknown>, previousBabyObservation?: number | null, onDockDiagnostic?: (info: DockSnackDiagnostic) => void, appearance?: PetAppearanceTrial) {
+  const babyBodyInset = appearance?.inset ?? defaultBodyInset;
+  const layoutBabyAt = (anchor: BabyPosition, area: Electron.Rectangle, level: 0 | 1 | 2) => {
+    if (!appearance) return defaultLayout(anchor, area, level);
+    const body = babyBodyInset(level);
+    const visible = {x: Math.max(area.x, Math.min(area.x + area.width - body.width, anchor.x)),
+      y: Math.max(area.y, Math.min(area.y + area.height - body.height, anchor.y))};
+    const window = {x: Math.round(Math.max(area.x, Math.min(area.x + area.width - 420, visible.x - (420-body.width)/2))),
+      y: Math.round(Math.max(area.y, Math.min(area.y + area.height - 300, visible.y - (300-body.height)/2)))};
+    return {window, position:{x:visible.x-window.x-body.x,y:visible.y-window.y-body.y}, visible};
+  };
   const page = path.join(__dirname, '../renderer/index.html');
   const initialSize = stageSize(pet.stage);
   const win = new BrowserWindow({
@@ -496,6 +512,18 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     // Two immediate repeated crashes are bounded; a later independent crash can recover.
     clearTimeout(healthyTimer);
     healthyTimer = setTimeout(() => { recoveryAttempts = 0; }, 30_000);
+  });
+  appearance?.attach(win, update => {
+    const before = babyBodyInset(attentionLevel), anchor = visibleAnchor();
+    const area = screen.getDisplayNearestPoint(anchor).workArea;
+    update();
+    const after = babyBodyInset(attentionLevel);
+    const right = Math.abs(anchor.x + before.width - area.x - area.width) < 1;
+    const left = Math.abs(anchor.x - area.x) < 1;
+    const top = Math.abs(anchor.y - area.y) < 1;
+    placeVisible({ x: left ? area.x : right ? area.x + area.width - after.width : anchor.x + (before.width-after.width)/2,
+      y: top ? area.y : anchor.y + before.height-after.height }, area);
+    if (lastBabyView) publishBaby(lastBabyView);
   });
   await win.loadFile(page);
   if (show) win.showInactive();

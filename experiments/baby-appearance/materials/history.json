@@ -1,0 +1,192 @@
+{
+  "source": {
+    "file": "raw/codex-clipboard-5355fb00-548d-48d3-95fd-46a967315d6f.png",
+    "original_filename": "codex-clipboard-5355fb00-548d-48d3-95fd-46a967315d6f.png",
+    "received_date": "2026-10-07",
+    "origin": "User supplied ChatGPT concept board; selected 01 and 06"
+  },
+  "versions": [
+    {
+      "version": "v001",
+      "date": "2026-10-07",
+      "scope": "stand/sit/sleep only; mouthless; built-in image generation; original PNG bytes retained",
+      "based_on": "raw/codex-clipboard-5355fb00-548d-48d3-95fd-46a967315d6f.png",
+      "files": [
+        {
+          "file": "working/v001/leaf-stand.png",
+          "source_filename": "leaf-baby.png",
+          "sha256": "3a4adcf834273a73584131e98dc4ae7e4ba0e91e552655b7d10154cd91dba984",
+          "alpha_bounds": [
+            59,
+            105,
+            1172,
+            1113
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        },
+        {
+          "file": "working/v001/leaf-sit.png",
+          "source_filename": "exec-a1fa30df-9e7f-44fd-a038-dbf7b35cd5ac.png",
+          "sha256": "4912b9b8ecb3131481160bb6daedde4112d813fc19d5e1231e1511f59b4081c6",
+          "alpha_bounds": [
+            84,
+            106,
+            1183,
+            1142
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        },
+        {
+          "file": "working/v001/leaf-sleep.png",
+          "source_filename": "exec-e04039b8-4588-49f4-aba3-9374a41ce8c6.png",
+          "sha256": "fa3cdfb4e473d4c981859741628664115d325a9960cc1334b035fcd288ceccd3",
+          "alpha_bounds": [
+            87,
+            308,
+            1209,
+            1031
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        },
+        {
+          "file": "working/v001/wing-stand.png",
+          "source_filename": "wing-baby.png",
+          "sha256": "a97d18624cabdd3b0f58b1d1856057fa29721e90dc93802436834d72c0c2e5fd",
+          "alpha_bounds": [
+            101,
+            124,
+            1207,
+            1157
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        },
+        {
+          "file": "working/v001/wing-sit.png",
+          "source_filename": "exec-c9f46471-ad2e-42dc-8170-8c1b68e9aab2.png",
+          "sha256": "211af959671344b6bde083735678d8b5406d4fcac2f5b56e092eabcae1abe237",
+          "alpha_bounds": [
+            94,
+            59,
+            1230,
+            1175
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        },
+        {
+          "file": "working/v001/wing-sleep.png",
+          "source_filename": "exec-37510817-dbd1-4da6-91e4-015c135bed47.png",
+          "sha256": "5b339f1b44a186d124b6c4b588a818da833e469b2095230f43cb4fe221e4b4e4",
+          "alpha_bounds": [
+            53,
+            379,
+            1218,
+            1077
+          ],
+          "verified": "RGBA, margins, visually reviewed; no drawn mouth; no app integration"
+        }
+      ],
+      "limitations": "Static pose assets. Frame animation, production integration and persistence untested. Existing pet unchanged."
+    },
+    {
+      "version": "v002",
+      "date": "2026-10-07",
+      "scope": "Front/left standing and sitting views; existing right and sleeping images preserved. Mouthless.",
+      "files": [
+        {
+          "file": "working/v002/leaf-stand-front.png",
+          "based_on": "working/v001/leaf-stand.png",
+          "source_filename": "exec-07cc9fd2-5fa6-48e7-b5fd-a52cbfd047ed.png",
+          "sha256": "9c5540cb597e6cc67ff9afda2a94ea09d86670263dbdc1ebf79db3b12e0a6c1a",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/leaf-stand-left.png",
+          "based_on": "working/v001/leaf-stand.png",
+          "source_filename": "exec-29e1683a-dd4a-4cc3-b090-954a92b48cb3.png",
+          "sha256": "6bc6d84dede9670885e1526b6252120854586479f91a6e0da8457397c0485e26",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/leaf-sit-front.png",
+          "based_on": "working/v001/leaf-sit.png",
+          "source_filename": "exec-938e3a5a-79f8-44ad-bd71-162ced94b4a9.png",
+          "sha256": "4d2ef8b7baa75ea3355bec74728350db900a36be85b0c0e03c004c8f34b25d5c",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/leaf-sit-left.png",
+          "based_on": "working/v001/leaf-sit.png",
+          "source_filename": "exec-5c389ab5-b6c7-4403-8775-9888334f0ee3.png",
+          "sha256": "bb0e4e278fb928a77fc0a84e05f83acaf74482c3c55f05ad42f0b5f4b9d0ea64",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/wing-stand-front.png",
+          "based_on": "working/v001/wing-stand.png",
+          "source_filename": "exec-cf14bd6c-6e78-4cf9-9671-5c4872452290.png",
+          "sha256": "0e00e40a81ec603869f017cc6cf4f7e96b4a921cfbcef17c8e270215db25ec94",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/wing-stand-left.png",
+          "based_on": "working/v001/wing-stand.png",
+          "source_filename": "exec-5da4c3ac-be8b-4503-8050-f69adcda58d9.png",
+          "sha256": "4477a8b9578a5560a855eb590c2899c78321c2f38cfc6bcab48b41955ff06ce0",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/wing-sit-front.png",
+          "based_on": "working/v001/wing-sit.png",
+          "source_filename": "exec-3da89471-0d9c-4ea9-ae28-0b236365a1f4.png",
+          "sha256": "aee819e01b4f1b21b34812d40c43eb68a74d7e3b446deb1ac10fef513193a206",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        },
+        {
+          "file": "working/v002/wing-sit-left.png",
+          "based_on": "working/v001/wing-sit.png",
+          "source_filename": "exec-f4735bb5-9a25-4eed-b56b-57aef818fabf.png",
+          "sha256": "bf4a16ba7f3e19812b3c5e7c30f58ccac2c707a9ab450cd4fe618df11099352a",
+          "verified": "RGBA and margins; mouthless front/left view visually reviewed; not runtime mirroring"
+        }
+      ],
+      "limitations": "Three view sprites, not continuous rotation or walking frames. Some small marking/shape differences between generated angles remain."
+    },
+    {
+      "version": "v003",
+      "date": "2026-10-07",
+      "scope": "Front body with left/right head anticipation; four added images, v001/v002 preserved",
+      "files": [
+        {
+          "file": "working/v003/leaf-head-right.png",
+          "based_on": "working/v002/leaf-stand-front.png",
+          "source_filename": "exec-997482f4-c3eb-44ed-a936-e2406546040e.png",
+          "sha256": "1199bd05997885ecb65187811ba0bf4e279868dd52b828222028f0df7ec59631",
+          "verified": "RGBA, margins, mouthless head direction visually reviewed; small drawing differences remain"
+        },
+        {
+          "file": "working/v003/wing-head-left.png",
+          "based_on": "working/v002/wing-stand-front.png",
+          "source_filename": "exec-44698e83-4371-4b86-a017-1234206bd6dc.png",
+          "sha256": "966c43fb20a5e1ea93e5cf65d32ed0eb5b54b8fdcd234189b24625b3e652b751",
+          "verified": "RGBA, margins, mouthless head direction visually reviewed; small drawing differences remain"
+        },
+        {
+          "file": "working/v003/wing-head-right.png",
+          "based_on": "working/v002/wing-stand-front.png",
+          "source_filename": "exec-c3b12bcd-65d7-4d92-91cf-3757227bce10.png",
+          "sha256": "79160c4afd4b378586bb18de4436f36d2d58cf8714b19f73715b952434179cfe",
+          "verified": "RGBA, margins, mouthless head direction visually reviewed; small drawing differences remain"
+        },
+        {
+          "file": "working/v003/leaf-head-left.png",
+          "based_on": "working/v002/leaf-stand-front.png",
+          "source_filename": "exec-f0bbe03f-8d03-4adf-a934-ae13ca37ce5e.png",
+          "sha256": "297cde2bdfb97b5be37111410eb8926401a95f39985d318aab5bffd5fd262ed4",
+          "verified": "RGBA, margins, mouthless head direction visually reviewed; small drawing differences remain"
+        }
+      ],
+      "rejected": "First leaf-left pointed right; excluded and regenerated with left reference. Original generated output preserved.",
+      "limitations": "Discrete frames, not continuous rotation; no walking or consuming animation."
+    }
+  ]
+}
