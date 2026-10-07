@@ -1,0 +1,11 @@
+@page { size:1280px 720px; margin:0; }
+html,body { margin:0!important; padding:0!important; width:1280px; background:white; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+#viewport { display:block; width:1280px; height:auto; min-height:0; overflow:visible; }
+#stage { display:block; width:1280px; height:auto; position:static; transform:none!important; }
+.slide { display:flex!important; position:relative; width:1280px; height:720px; margin:0; break-inside:avoid; break-after:page; page-break-after:always; }
+.slide:last-child { break-after:auto; page-break-after:auto; }
+.controls,.skip-link,.sr-only,dialog,noscript { display:none!important; }
+.print-sources { display:flex; gap:8px; font-size:10px; white-space:nowrap; flex:0 0 auto; }
+.print-sources a { text-decoration:underline; }
+.print-still-label { display:inline; }
+.slide-footer .foot-caption { flex:1; }

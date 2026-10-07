@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Jarvis Pet 10분 발표: 시작한 문제, 설계 구조, 실제 구현, 보완점과 배운 점">
+  <meta name="color-scheme" content="light dark">
+  <title>Jarvis Pet — 왜 굳이 자비스여야 할까?</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="print.css" media="print">
+  <script defer src="content.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#stage">발표 내용으로 이동</a>
+  <main id="viewport" aria-label="Jarvis Pet 발표">
+    <div id="stage" tabindex="-1" aria-label="발표 슬라이드"></div>
+  </main>
+  <nav class="controls" aria-label="발표 조작">
+    <a class="brand" href="#1" aria-label="첫 장으로">JARVIS <span>PET</span></a>
+    <div class="navigation"><button id="prev" aria-label="이전 장">←</button><label class="sr-only" for="jump">슬라이드 선택</label><select id="jump"></select><button id="next" aria-label="다음 장">→</button></div>
+    <div class="utilities"><button id="motion" aria-pressed="false">시연 멈춤</button><button id="replay">시연 다시 보기</button><button id="notes-button" aria-haspopup="dialog">발표 메모</button><button id="fullscreen">전체 화면</button><button id="timer" aria-label="발표 타이머 시작">시작 <span id="elapsed">00:00</span></button><button id="reset" aria-label="발표 타이머 초기화" title="발표 타이머 초기화">↺</button></div>
+  </nav>
+  <p id="announcement" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+  <dialog id="notes"><div class="notes-top"><h2 id="notes-title">발표 메모</h2><button id="close-notes" aria-label="발표 메모 닫기">닫기 ✕</button></div><p id="notes-time"></p><div id="notes-content"></div><details id="notes-details" hidden><summary>추가 설명 · 질문 대비</summary><div id="notes-reference"></div></details><h3>근거 자료</h3><ul id="sources"></ul><p class="notes-help">이 메모는 현재 화면에 표시됩니다. 발표 중에는 닫아 주세요.<br>이동: ← → / 처음·마지막: Home·End / 메모: N / 전체 화면: F / 타이머: T</p></dialog>
+  <noscript>슬라이드에는 JavaScript가 필요합니다. content.js에서 발표 내용과 메모를 읽을 수 있습니다.</noscript>
+</body>
+</html>
