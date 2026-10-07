@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync,
   renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { SelectedTrashSnackBackend, SelectedTrashSnackService } from '../src/main/trash-snack';
 
 /** Only this test-owned directory is read/modified/deleted; never os.homedir(). */
 function fixture(t: test.TestContext) {
-  const directory = mkdtempSync(path.join(process.cwd(), '.local', 'trash-snack-fixture-'));
+  // A fresh checkout has no .local directory. Canonicalize macOS /var aliases
+  // so the production path checks still exercise the exact synthetic root.
+  const directory = realpathSync(mkdtempSync(path.join(tmpdir(), 'trash-snack-fixture-')));
   const root = path.join(directory, 'SyntheticTrash'); mkdirSync(root, { mode: 0o700 });
   const support = { available: true, exactTrashOrder: false, conditionalDelete: false, dockDrop: false,
     selectionMode: 'user-selected' as const, deletionSafety: 'staged-revalidation' as const, message: 'synthetic' };
