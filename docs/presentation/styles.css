@@ -117,7 +117,53 @@
  .journey-conclusion small { font-size:16px; }
 }
 
-/* 5장 실제 시연은 4장의 세 단계와 담당 색상을 그대로 따릅니다. */
+/* 4장: 사용자의 세 응답을 나누고, 미완료 갈래에만 재촉 조건을 연결합니다. */
+.notice-flow { display:flex; align-items:center; justify-content:center; gap:26px; padding:16px 24px; border:1px solid #a8bba7; border-radius:7px; background:#fffdf8; font-size:27px; }
+.notice-flow strong { color:#254c3b; }
+.flow-arrow { color:#62806a; }
+.response-label { text-align:center; font-size:17px; color:var(--muted); margin:14px 0 12px; }
+.response-branches { display:grid; grid-template-columns:1fr 1.35fr 1fr; gap:20px; align-items:start; }
+.response-branch { text-align:center; padding:16px 15px; border-top:3px solid #759481; background:#f8faf5; border-radius:0 0 6px 6px; }
+.response-branch h3 { font-size:29px; }
+.response-result { font-size:22px; line-height:1.45; margin-top:7px; }
+.response-result>span { display:block; color:#62806a; margin-bottom:5px; }
+.response-pending { background:#f6e5c5; border-color:#a76c29; }
+.response-cancel { background:#e0e6dd; }
+.nag-condition { margin-top:14px; padding-top:13px; border-top:1px solid #b8894f; }
+.nag-condition h4 { font-size:23px; line-height:1.4; margin:0 0 8px; color:#843d2c; letter-spacing:-.7px; }
+.nag-condition p { font-size:21px; line-height:1.5; }
+.nag-condition small { display:block; font-size:16px; line-height:1.5; margin-top:8px; color:#725431; }
+.response-rule { margin-top:14px; text-align:center; color:var(--muted); font-size:19px; line-height:1.45; }
+@media(max-width:760px) {
+ .notice-flow { flex-wrap:wrap; padding:17px 12px; gap:9px; font-size:19px; }
+ .notice-flow strong { flex-basis:100%; text-align:center; }
+ .notice-flow .flow-arrow:last-of-type { display:none; }
+ .notice-flow strong:before { content:"↓"; display:block; color:#62806a; margin-bottom:8px; }
+ .response-branches { grid-template-columns:1fr; gap:18px; }
+ .response-branch h3 { font-size:26px; }
+ .response-result { font-size:22px; }
+ .nag-condition h4 { font-size:22px; }
+ .nag-condition p { font-size:20px; }
+ .response-rule { font-size:17px; text-align:left; }
+}
+
+/* 5장: 영상에서 실제로 확인할 세 장면만 설명합니다. */
+.demo-moments { list-style:none; padding:0; margin:18px 0 0; }
+.demo-moments li { padding:24px 0 27px; border-bottom:1px solid var(--line); }
+.demo-moments li:first-child { padding-top:0; }
+.demo-moments li:last-child { border-bottom:0; }
+.demo-moments h3 { font-size:29px; }
+.demo-moments h3 span { font-size:17px; color:var(--accent); margin-right:17px; vertical-align:middle; }
+.demo-moments p { font-size:24px; color:var(--muted); line-height:1.55; margin:10px 0 0 40px; }
+.demo-takeaway { font-size:28px; font-weight:650; line-height:1.4; letter-spacing:-.8px; margin-top:15px; }
+@media(max-width:760px) {
+ .demo-moments { margin:0; }
+ .demo-moments li { padding:20px 0; }
+ .demo-moments h3 { font-size:25px; }
+ .demo-moments p { font-size:21px; margin-left:0; }
+ .demo-takeaway { font-size:25px; margin-top:25px; }
+}
+
 .demo-coordinator { font-size:17px; line-height:1.5; color:var(--muted); margin-bottom:14px; }
 .demo-coordinator b { color:var(--ink); }
 .demo-phases { list-style:none; padding:0; margin:0; }
