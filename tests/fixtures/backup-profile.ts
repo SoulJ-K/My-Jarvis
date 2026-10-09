@@ -1,6 +1,6 @@
 // Verification helper only: no production entry point, live backup or default userData lookup.
 // The caller owns the synthetic profile and must await its application's clean exit.
-import { constants, copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -95,12 +95,36 @@ export function readProfile(dir: string) {
     care, experiences, socialExperiences };
 }
 type Manifest = { format: 1; condition: 'clean-exit'; files: Record<string, string>; runtime: typeof process.versions };
+/** Read-only preflight: protect the whole input tree, not just its DB files.
+ * The destination's parent must already exist (as required by mkdir below).
+ * Resolve it through the filesystem before joining the new leaf: lexical
+ * normalization of a symlink/../ path can otherwise compare the wrong place.
+ * Assumes no other process changes directory links during this operation. */
+function resolveDisjointPaths(source: string, target: string) {
+  directory(source);
+  // native uses filesystem traversal for symlink/.. rather than resolving ..
+  // lexically first. Use the same resolved paths for all subsequent I/O.
+  const sourcePath = realpathSync.native(source);
+  let targetPath: string;
+  try { targetPath = realpathSync.native(target); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    targetPath = path.join(realpathSync.native(path.dirname(target)), path.basename(target));
+  }
+  const contains = (parent: string, child: string) => {
+    const relative = path.relative(parent, child);
+    return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+  };
+  if (contains(sourcePath, targetPath) || contains(targetPath, sourcePath)) fail('PROFILE_PATH_OVERLAP');
+  return { source: sourcePath, target: targetPath };
+}
 function copyProfile(source: string, target: string, files: Record<string, string>) {
   for (const folder of ['pet', 'assistant']) mkdirSync(path.join(target, folder), { mode: 0o700 });
   for (const file of Object.keys(files)) copyFileSync(path.join(source, file), path.join(target, file), constants.COPYFILE_EXCL);
   if (JSON.stringify(files) !== JSON.stringify(hashes(target))) fail('PROFILE_COPY_MISMATCH');
 }
 export function backupClosedProfile(source: string, target: string) {
+  ({ source, target } = resolveDisjointPaths(source, target));
   if (readdirSync(source).includes('INCOMPLETE')) fail('PROFILE_INCOMPLETE');
   const files = checkProfile(source);
   mkdirSync(target, { mode: 0o700 }); // Existing folders, files and dangling links all fail.
@@ -114,6 +138,7 @@ export function backupClosedProfile(source: string, target: string) {
   unlinkSync(path.join(target, 'INCOMPLETE'));
 }
 export function restoreClosedProfile(source: string, target: string) {
+  ({ source, target } = resolveDisjointPaths(source, target));
   directory(source);
   if (readdirSync(source).includes('INCOMPLETE')) fail('BACKUP_INCOMPLETE');
   regular(path.join(source, 'manifest.json'));

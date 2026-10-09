@@ -6,11 +6,12 @@ import { TimerRepository } from '../../src/storage/timer-repository';
 import { ScheduleRepository } from '../../src/storage/schedule-repository';
 import { FollowupRepository } from '../../src/storage/followup-repository';
 import { FollowupService } from '../../src/assistant/followup';
-import { hatchScenes } from '../../src/pet/lifecycle';
+import { hatchScenes, type HatchScene } from '../../src/pet/lifecycle';
 import { babyView, BABY_TIMING, cycle } from '../../src/pet/baby-life';
 
 /** Only newly-created test directories are supplied by backup-restore.test.ts. */
-export function seedProfile(directory: string, stage: 'egg' | 'baby' = 'baby') {
+export type SeedStage = 'egg' | 'baby' | { completed: HatchScene | null };
+export function seedProfile(directory: string, stage: SeedStage = 'baby') {
   let now = Date.UTC(2026, 9, 10, 3);
   const originalNow = Date.now;
   Date.now = () => now;
@@ -21,10 +22,11 @@ export function seedProfile(directory: string, stage: 'egg' | 'baby' = 'baby') {
     // Upgrade while still an egg so naming and initial life/social commit together.
     new BabyLifeRepository(directory, () => now).close();
     try {
-      if (stage === 'baby') {
+      if (stage !== 'egg') {
         let state = lifecycle.apply(lifecycle.read().revision, { type: 'prepare' });
-        for (const scene of hatchScenes) state = lifecycle.apply(state.revision, { type: 'witness', scene });
-        lifecycle.apply(state.revision, { type: 'name', name: '복구시험별' });
+        const scenes = stage === 'baby' ? hatchScenes : hatchScenes.slice(0, stage.completed === null ? 0 : hatchScenes.indexOf(stage.completed) + 1);
+        for (const scene of scenes) state = lifecycle.apply(state.revision, { type: 'witness', scene });
+        if (stage === 'baby') lifecycle.apply(state.revision, { type: 'name', name: '복구시험별' });
       }
     } finally { lifecycle.close(); }
     if (stage === 'baby') {

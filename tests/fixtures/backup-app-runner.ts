@@ -8,10 +8,12 @@ import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
 import { checkProfile } from './backup-profile';
+import type { HatchView } from '../../src/shared/hatch';
 
-const [directory, at, stage] = process.argv.slice(2);
+const [directory, at, stage, mode = 'normal'] = process.argv.slice(2);
 assert.ok(path.isAbsolute(directory));
 assert.ok(['egg', 'baby'].includes(stage));
+assert.ok(['normal', 'hatch'].includes(mode));
 assert.equal(realpathSync(directory), directory);
 assert.ok(!existsSync(path.join(directory, 'INCOMPLETE')));
 checkProfile(directory); // Missing stores must fail before production can create new ones.
@@ -45,7 +47,12 @@ lifecycle.startJarvis = () => start({ show: false,
     assert.ok(panel, 'assistant repositories must all open');
     const pet = await win.webContents.executeJavaScript('window.petWindow.snapshot()');
     assert.equal(pet.stage, stage);
-    if (stage === 'baby') {
+    let hatch: HatchView | undefined;
+    if (mode === 'hatch') {
+      hatch = await win.webContents.executeJavaScript('window.hatch.read()') as HatchView;
+      assert.equal(hatch.available, false); assert.equal(hatch.state.ready, true);
+      assert.equal(hatch.state.name, null); assert.equal(hatch.state.petId, pet.petId);
+    } else if (stage === 'baby') {
       assert.equal(pet.name, '복구시험별');
       assert.ok(await win.webContents.executeJavaScript('window.babyLife.read()'));
     }
@@ -56,7 +63,7 @@ lifecycle.startJarvis = () => start({ show: false,
     assert.equal(app.getPath('userData'), directory);
     assert.equal(app.getPath('sessionData'), session);
     ready = true;
-    console.log('BACKUP_APP_READY:' + JSON.stringify({ pet, state, hidden: true, requests }));
+    console.log('BACKUP_APP_READY:' + JSON.stringify({ pet, state, hidden: true, requests, ...(hatch ? { hatch: hatch.state } : {}) }));
     clearTimeout(timeout);
     app.quit();
   }, onFailure: code => console.log('BACKUP_APP_FAILURE:' + code),

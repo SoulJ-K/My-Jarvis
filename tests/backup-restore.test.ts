@@ -1,26 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { backupClosedProfile, restoreClosedProfile, hashes, readProfile, stores } from './fixtures/backup-profile';
-import { seedProfile } from './fixtures/backup-seed';
+import { seedProfile, type SeedStage } from './fixtures/backup-seed';
+import { LifecycleRepository } from '../src/storage/lifecycle-repository';
+import { hatchScenes, nextHatchStep, type Lifecycle } from '../src/pet/lifecycle';
 import type { AssistantPanelState } from '../src/shared/assistant-panel';
 
 // Retain all synthetic artifacts, including failed candidates, for inspection.
 const parent = process.env.JARVIS_BACKUP_TEST_ROOT ?? tmpdir();
 const root = realpathSync(mkdtempSync(path.join(parent, 'backup-cases-')));
 console.log('SYNTHETIC_BACKUP_ARTIFACTS:' + root);
-function fixture(stage: 'egg' | 'baby' = 'baby') {
-  const dir = mkdtempSync(path.join(root, `${stage}-`));
+function fixture(stage: SeedStage = 'baby') {
+  const label = typeof stage === 'string' ? stage : `hatch-${stage.completed ?? 'prepared'}`;
+  const dir = mkdtempSync(path.join(root, `${label}-`));
   const source = path.join(dir, 'source'); mkdirSync(source, { mode: 0o700 });
   return { dir, source, now: seedProfile(source, stage), backup: path.join(dir, 'backup'), restored: path.join(dir, 'restored') };
 }
-function launch(directory: string, at: number, stage = 'baby') {
+function launch(directory: string, at: number, stage = 'baby', mode = 'normal') {
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  const result = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/backup-app-runner.js'), directory, String(at), stage],
+  const result = spawnSync(process.execPath, [path.join(__dirname, 'fixtures/backup-app-runner.js'), directory, String(at), stage, mode],
     { env, encoding: 'utf8', timeout: 20000 });
   const log = mkdtempSync(path.join(root, 'launch-'));
   writeFileSync(path.join(log, 'stdout.log'), result.stdout ?? '', { flag: 'wx' });
@@ -33,7 +36,7 @@ function launch(directory: string, at: number, stage = 'baby') {
   assert.ok(line, `missing app readiness; see ${log}`);
   return JSON.parse(line.slice('BACKUP_APP_READY:'.length)) as {
     pet: { petId: string; createdAt: string; stage: string; name?: string };
-    state: AssistantPanelState; hidden: boolean; requests: number;
+    state: AssistantPanelState; hidden: boolean; requests: number; hatch?: Lifecycle;
   };
 }
 function clone(source: string, target: string) { cpSync(source, target, { recursive: true, force: false, errorOnExist: true }); }
@@ -50,6 +53,116 @@ function bytes(dir: string): Record<string, string> {
     }
   }
   return result;
+}
+function tree(dir: string) {
+  return readdirSync(dir, { recursive: true, withFileTypes: true }).map(entry => [
+    path.relative(dir, path.join(entry.parentPath, entry.name)),
+    entry.isDirectory() ? 'directory' : entry.isSymbolicLink() ? 'link' : 'file',
+    entry.isSymbolicLink() ? readlinkSync(path.join(entry.parentPath, entry.name)) : '',
+  ]).sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+for (const operation of ['backup', 'restore'] as const) {
+  test(`${operation} rejects overlapping and linked destinations without mutation and permits every valid retry`, () => {
+    const f = fixture(); backupClosedProfile(f.source, f.backup);
+    const input = operation === 'backup' ? f.source : f.backup;
+    const data = operation === 'backup' ? input : path.join(input, 'data');
+    const alias = path.join(f.dir, 'input-link'), parentAlias = path.join(f.dir, 'parent-link');
+    const storeAlias = path.join(f.dir, 'store-link');
+    symlinkSync(input, alias); symlinkSync(f.dir, parentAlias); symlinkSync(path.join(data, 'pet'), storeAlias);
+    const aliasedInput = path.join(parentAlias, path.basename(input));
+    // Preserve symlink/.. spelling: path.join would erase the very condition under test.
+    const cases = [
+      [input, path.join(data, 'nested')], [input, path.relative(process.cwd(), path.join(input, 'nested'))],
+      [input, path.join(data, 'pet/nested')], [input, path.join(data, 'assistant/nested')],
+      [input, input], [input, f.dir], [input, path.join(alias, 'nested')],
+      [aliasedInput, path.join(input, 'nested')], [aliasedInput, path.join(alias, 'nested')],
+      [input, `${storeAlias}/../nested`], [input, alias],
+      [operation === 'backup' ? `${storeAlias}/..` : `${storeAlias}/../..`, path.join(data, 'nested')],
+    ];
+    const beforeTree = tree(input), beforeBytes = bytes(input);
+    for (const [index, [source, target]] of cases.entries()) {
+      let error: unknown;
+      try {
+        if (operation === 'backup') backupClosedProfile(source, target);
+        else restoreClosedProfile(source, target);
+      } catch (caught) { error = caught; }
+      assert.deepEqual(tree(input), beforeTree, `case ${index}: rejection must not leave any new directory or file`);
+      assert.deepEqual(bytes(input), beforeBytes);
+      assert.ok(error instanceof Error && error.message === 'PROFILE_PATH_OVERLAP', `case ${index}: explicit overlap error`);
+      const restored = path.join(f.dir, `retry-restored-${index}`);
+      if (operation === 'backup') {
+        const retry = path.join(f.dir, `retry-backup-${index}`);
+        backupClosedProfile(source, retry); restoreClosedProfile(retry, restored);
+      } else restoreClosedProfile(source, restored);
+      assert.deepEqual(readProfile(restored), readProfile(f.source));
+      assert.deepEqual(tree(input), beforeTree); assert.deepEqual(bytes(input), beforeBytes);
+    }
+  });
+}
+
+test('distinct sibling paths with shared prefixes and linked parents still copy and restore successfully', () => {
+  const f = fixture();
+  const alias = path.join(f.dir, 'parent-link'); symlinkSync(f.dir, alias);
+  const source = path.join(alias, 'source'), backup = path.join(alias, 'source-backup');
+  const before = readProfile(f.source);
+  backupClosedProfile(source, backup);
+  restoreClosedProfile(backup, path.join(alias, 'source-backup-restored'));
+  assert.deepEqual(readProfile(path.join(f.dir, 'source-backup-restored')), before);
+  const destination = path.join(f.dir, 'destination'); mkdirSync(destination);
+  const child = path.join(destination, 'child'); mkdirSync(child);
+  const link = path.join(f.dir, 'destination-link'); symlinkSync(child, link);
+  backupClosedProfile(source, `${link}/../backup`);
+  restoreClosedProfile(`${link}/../backup`, `${link}/../restored`);
+  assert.deepEqual(readProfile(path.join(destination, 'restored')), before);
+  assert.ok(!existsSync(path.join(f.dir, 'backup')), 'no lexically normalized alternate backup');
+  assert.ok(!existsSync(path.join(f.dir, 'restored')), 'no lexically normalized alternate restore');
+});
+
+// Seven durable unnamed checkpoints: prepared plus each of the six witnessed scenes.
+for (const completed of [null, ...hatchScenes]) {
+  test(`hatch checkpoint ${completed ?? 'prepared'} restores, survives two app starts and continues to the same named baby`, () => {
+    const f = fixture({ completed });
+    const seeded = readProfile(f.source);
+    assert.equal(seeded.lifecycle.completed, completed);
+    assert.equal(seeded.lifecycle.ready, true); assert.equal(seeded.lifecycle.name, null);
+    assert.equal(seeded.life, null, 'unnamed baby checkpoints have no named-baby life yet');
+    const initial = launch(f.source, f.now, seeded.pet.stage, 'hatch');
+    const before = readProfile(f.source);
+    assert.deepEqual(initial.hatch, seeded.lifecycle);
+    backupClosedProfile(f.source, f.backup);
+    const sourceBytes = bytes(f.source), backupBytes = bytes(f.backup);
+    restoreClosedProfile(f.backup, f.restored);
+    assert.deepEqual(readProfile(f.restored), before);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const restarted = launch(f.restored, f.now, seeded.pet.stage, 'hatch');
+      assert.deepEqual(restarted.pet, initial.pet);
+      assert.deepEqual(restarted.hatch, before.lifecycle, 'startup must not advance a witnessed scene');
+      assert.deepEqual(readProfile(f.restored), before);
+    }
+    // Continue through the production repository after clean exit. This checks
+    // durable progression, not visible animation or simulated user witnessing.
+    const lifecycle = new LifecycleRepository(f.restored, { namePolicy: { trim: true, maxCodePoints: 20 } });
+    try {
+      let state = lifecycle.read();
+      const remaining = hatchScenes.slice(completed === null ? 0 : hatchScenes.indexOf(completed) + 1);
+      for (const scene of remaining) {
+        assert.equal(nextHatchStep(state), scene);
+        state = lifecycle.apply(state.revision, { type: 'witness', scene });
+      }
+      assert.equal(nextHatchStep(state), 'naming');
+      state = lifecycle.apply(state.revision, { type: 'name', name: '복구시험별' });
+      assert.equal(state.petId, before.pet.petId); assert.equal(state.stage, 'baby');
+      assert.equal(state.orbId, `${before.pet.petId}:orb`); assert.equal(nextHatchStep(state), 'life');
+    } finally { lifecycle.close(); }
+    const named = readProfile(f.restored);
+    assert.ok(named.life && named.social);
+    assert.deepEqual(named.care, before.care); assert.deepEqual(named.timers, before.timers);
+    assert.deepEqual(named.schedules, before.schedules); assert.deepEqual(named.followups, before.followups);
+    const final = launch(f.restored, f.now, 'baby');
+    assert.equal(final.pet.petId, before.pet.petId); assert.equal(final.pet.name, '복구시험별');
+    assert.deepEqual(bytes(f.source), sourceBytes); assert.deepEqual(bytes(f.backup), backupBytes);
+  });
 }
 
 test('cleanly stopped baby restores all four stores, experiences and joined tasks; two app launches do not duplicate work', () => {
