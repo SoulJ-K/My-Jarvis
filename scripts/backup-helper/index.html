@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Jarvis Pet 백업 도우미</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<header><span class="eyebrow">JARVIS PET · 내 펫 보관함</span><h1>함께한 시간과 모습,<br>안전하게 간직하세요.</h1><p>펫의 기억·일정과 앱 안의 외형을 함께 보관합니다.</p></header>
+<nav aria-label="작업 선택"><button id="tab-backup" aria-pressed="true">백업 만들기</button><button id="tab-restore" aria-pressed="false">백업에서 복원</button></nav>
+<section id="backup-panel" aria-label="백업 만들기">
+<div class="field"><div class="row"><h2><span class="step">1</span> 백업할 펫</h2><button id="choose-app" class="secondary">앱 선택</button></div><p id="app-path" class="path">실행 중인 펫 앱을 찾고 있습니다…</p><p id="notice" class="hint"></p></div>
+<div class="field"><div class="row"><h2><span class="step">2</span> 백업 보관 위치</h2><button id="choose-backupParent" class="secondary">폴더 선택</button></div><p id="backupParent-path" class="path">보관할 폴더를 선택해 주세요.</p><p class="hint">날짜가 붙은 새 백업 폴더를 자동으로 만듭니다.</p></div>
+<div class="confirmation"><strong>마지막으로, 펫을 잠시 쉬게 해 주세요.</strong><p>펫 메뉴에서 정상 종료해 주세요. 백업이 끝날 때까지 다시 실행하지 마세요.</p><label><input id="closed" type="checkbox">펫을 메뉴에서 정상 종료했습니다.</label></div>
+<button id="backup-now" class="primary wide" disabled>백업 만들기</button>
+</section>
+<section id="restore-panel" aria-label="백업에서 복원" hidden>
+<div class="field"><div class="row"><h2><span class="step">1</span> 가져올 백업</h2><button id="choose-backup" class="secondary">백업 폴더 선택</button></div><p id="backup-path" class="path">이 도우미로 만든 백업 폴더를 선택해 주세요.</p></div>
+<div class="field"><div class="row"><h2><span class="step">2</span> 복원 사본 위치</h2><button id="choose-restoreParent" class="secondary">폴더 선택</button></div><p id="restoreParent-path" class="path">복원된 펫을 보관할 폴더를 선택해 주세요.</p><p class="hint">새 폴더에 복원하므로 현재 펫은 그대로 남습니다.</p></div>
+<div class="confirmation"><strong>내가 만든 백업을 선택해 주세요.</strong><p>자료와 외형을 검사한 뒤 복원합니다. 알림·휴지통 접근 권한은 별도로 설정해야 합니다.</p></div>
+<button id="restore-now" class="primary wide" disabled>새 사본으로 복원</button>
+</section>
+<div id="feedback" role="status" aria-live="polite" tabindex="-1" hidden><strong id="feedback-title"></strong><p id="feedback-message"></p><p id="output-path" class="path" hidden></p><button id="reveal" class="secondary" hidden>저장 폴더에서 보기</button></div>
+<footer>이 Mac용 수동 백업 · 백업은 암호화되지 않으므로 개인 보관 위치를 선택해 주세요.</footer>
+</main><script src="renderer.js"></script></body></html>
