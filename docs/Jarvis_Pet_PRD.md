@@ -694,11 +694,11 @@ v0.1의 사용자 경험은 **알을 받아 키우고 → 부화를 직접 목�
 
 알·아기를 키우는 경험을 유지하면서 타이머를 더 자유롭게 쓰고, 아기가 알림 이후의 결과까지 챙기도록 발전시킨다. 부화·상호작용·생활 표현을 다듬고, 사용자가 허용한 제한된 파일 작업을 휴지통 간식으로 연결한다. 이후 성장 단계와 무작위 외형은 이 v0.2 실사용 보완 범위에 포함하지 않는다. 무작위 외형은 아래 별도 작업으로 구분한다.
 
-상세 결정은 [Decision Log](Jarvis_Pet_Decision_Log.md#v02-decisions), 아기의 행동은 [캐릭터·성장 설계](Jarvis_Pet_Character_and_Growth_Design.md), 구현·검사 계획은 [기술 설계](Jarvis_Pet_Technical_Design.md#v02-implementation-plan)에서 관리한다. 모두 구현 예정이며 기존 v0.1 검증 완료를 뜻하지 않는다.
+상세 결정은 [Decision Log](Jarvis_Pet_Decision_Log.md#v02-decisions), 아기의 행동은 [캐릭터·성장 설계](Jarvis_Pet_Character_and_Growth_Design.md), 구현·검사 계획은 [기술 설계](Jarvis_Pet_Technical_Design.md#v02-implementation-plan)에서 관리한다. 작성 당시 구현 예정이던 항목은 이후 [PR #42](https://github.com/SoulJ-K/My-Jarvis/pull/42)로 `main`에 병합됐다. 병합은 기존 v0.1 또는 v0.2 전체 검증 완료를 뜻하지 않으며, 실제 검증 범위와 남은 확인은 [개발 기록](Jarvis_Pet_Development_Log.md)을 따른다.
 
 <a id="baby-appearance-progress"></a>
 
-**별도 외형 작업 — 구현 중:** 잎 친구·날개 친구 두 후보의 외형과 자세·방향 표현을 구현하고, 기존 펫과 분리한 시험 앱에 적용했다. 사용자는 두 시험 펫의 실행과 이동 후 정면 복귀 속도 보완 적용을 확인했다. 남은 작업은 부화 때 한 번 선택한 외형을 저장하고 부화 장면·아기 생활에 일관되게 연결하는 것이다. 기존 펫의 모습과 자료는 보존하며, 새 성장 단계나 제품 버전 변경을 포함하지 않는다. 결정은 [D-069](Jarvis_Pet_Decision_Log.md#baby-appearance-decision), 표현은 [캐릭터 설계](Jarvis_Pet_Character_and_Growth_Design.md#baby-appearance-style), 구현·검증 범위는 [기술 설계](Jarvis_Pet_Technical_Design.md#baby-appearance-implementation)를 따른다.
+**별도 외형 작업 — 구현 중:** 잎 친구·날개 친구 두 후보의 외형과 자세·방향 표현을 구현하고, 기존 펫과 분리한 시험 앱에 적용했다. 사용자는 두 시험 펫의 실행과 이동 후 정면 복귀 속도 보완 적용을 확인했다. 남은 작업은 부화 때 한 번 선택한 외형을 저장하고 부화 장면·아기 생활에 일관되게 연결하는 것이다. 기존 펫의 모습과 자료는 보존하며, 새 성장 단계나 제품 버전 변경을 포함하지 않는다. 시험 폴더와 선택적 시험 연결 코드는 [PR #44](https://github.com/SoulJ-K/My-Jarvis/pull/44)로 `main`에 병합됐으나 일반 앱은 여전히 기존 외형을 사용한다. 결정은 [D-069](Jarvis_Pet_Decision_Log.md#baby-appearance-decision), 표현은 [캐릭터 설계](Jarvis_Pet_Character_and_Growth_Design.md#baby-appearance-style), 구현·검증 범위는 [기술 설계](Jarvis_Pet_Technical_Design.md#baby-appearance-implementation)를 따른다.
 
 # 18. 구조만 고려 / 미래 확장
 
