@@ -10,6 +10,7 @@ import { seedProfile, type SeedStage } from './fixtures/backup-seed';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { hatchScenes, nextHatchStep, type Lifecycle } from '../src/pet/lifecycle';
 import type { AssistantPanelState } from '../src/shared/assistant-panel';
+import { listSnapshots } from '../src/storage/snapshots';
 
 // Retain all synthetic artifacts, including failed candidates, for inspection.
 const parent = process.env.JARVIS_BACKUP_TEST_ROOT ?? tmpdir();
@@ -169,6 +170,10 @@ test('cleanly stopped baby restores all four stores, experiences and joined task
   const f = fixture();
   const initial = launch(f.source, f.now);
   const before = readProfile(f.source), sourceHashes = hashes(f.source);
+  const reasons = (dir: string) => listSnapshots(dir).map(s => s.reason).sort();
+  // D-072: the real app takes its first daily snapshot at startup and one at a clean quit.
+  assert.deepEqual(reasons(f.source), ['daily', 'quit']);
+  assert.match(readFileSync(path.join(f.source, 'pet-diagnostics.log'), 'utf8'), /snapshot_created_daily[\s\S]*snapshot_created_quit/);
   assert.equal(before.care.length, 2);
   for (const kind of ['touch', 'food_offered', 'meal_finished', 'sleep_completed']) assert.ok(before.experiences.some(row => row.kind === kind), kind);
   assert.ok(before.socialExperiences.some(row => row.kind === 'praise'));
@@ -181,6 +186,7 @@ test('cleanly stopped baby restores all four stores, experiences and joined task
   assert.ok(!existsSync(path.join(f.restored, 'browser-session')), 'fresh browser session requires no copied settings');
   const first = launch(f.restored, f.now + 600000);
   const after = readProfile(f.restored);
+  assert.deepEqual(reasons(f.restored), ['daily', 'quit'], 'snapshots are not copied by the closed-profile backup');
   assert.deepEqual(first.pet, initial.pet);
   assert.deepEqual(after.pet, before.pet); assert.deepEqual(after.lifecycle, before.lifecycle);
   assert.deepEqual(after.care, before.care);
@@ -216,6 +222,7 @@ test('cleanly stopped baby restores all four stores, experiences and joined task
   assert.ok(first.state.card && !first.state.card.completed);
   const second = launch(f.restored, f.now + 600000);
   const twice = readProfile(f.restored);
+  assert.deepEqual(reasons(f.restored), ['daily', 'quit', 'quit'], 'a restart within the day adds no second daily');
   assert.deepEqual(second, first);
   assert.deepEqual(twice.timers, after.timers); assert.deepEqual(twice.schedules, after.schedules);
   assert.deepEqual(twice.followups, after.followups); assert.deepEqual(twice.experiences, after.experiences);

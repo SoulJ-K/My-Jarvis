@@ -37,6 +37,8 @@ ADR은 기술 선택의 이유·대안·제약을 남기는 기록이다. D-006�
 
 **후속 수동 도구:** 사용자의 「수동 도구·외형 보호」 선택으로 [수동 백업·복원](Jarvis_Pet_Technical_Design.md#manual-pet-recovery)을 추가했다. 현재 일반 앱 묶음 안의 외형·실행 환경과 정상 종료한 네 저장소를 함께 보존하고, 새 위치에서만 실행 연결·앱 식별값을 바꾼다. 검사 전용 보조 코드를 실제 자료에 그대로 적용하지 않는다. 원본을 읽기 전용으로 조사하고 현재 형식만 허용하며, 기존 대상·불완전 사본·미확인 저장 파일·외부 외형 구성을 거절하는 보수적인 범위를 선택했다. 후속 사용성 요청으로 별도 더블클릭 도우미의 버튼·폴더 선택을 같은 보존 로직에 연결했다. 자동 보존 주기·암호화·운영체제 권한 복원은 도입하지 않았고, 실제 개인 펫의 백업·복원은 별도 승인·검증 단계다. [D-070](Jarvis_Pet_Decision_Log.md#manual-pet-backup-decision)에 선택 이유, [개발 기록](Jarvis_Pet_Development_Log.md#manual-backup-2026-10-10)에 새 실행 결과를 남긴다.
 
+**자동 스냅샷 — 2026-10-13:** [D-072](Jarvis_Pet_Decision_Log.md#auto-snapshot-decision)에 따라 실행 중에도 같은 디스크에 네 저장소를 SQLite `VACUUM INTO`로 복사하고 최신 7개를 보관한다. 저장 위치·형식·SQLite 선택은 그대로다. [구조](Jarvis_Pet_Technical_Design.md#auto-snapshots)
+
 <details>
 <summary>선택 이유와 대안 비교</summary>
 

@@ -31,7 +31,7 @@ export function hashes(dir: string): Record<string, string> {
   // This test launcher stores browser-only caches in browser-session. Other
   // launchers (including appearance.json trials) need their own audited scope.
   for (const name of readdirSync(dir)) {
-    if (!['pet', 'assistant', 'browser-session', 'pet-diagnostics.log', 'INCOMPLETE'].includes(name)) fail('PROFILE_UNEXPECTED_ROOT_FILE');
+    if (!['pet', 'assistant', 'browser-session', 'pet-diagnostics.log', 'INCOMPLETE', 'snapshots'].includes(name)) fail('PROFILE_UNEXPECTED_ROOT_FILE');
   }
   const result: Record<string, string> = {};
   for (const folder of ['pet', 'assistant']) {

@@ -179,6 +179,8 @@ export function profileFiles(root) {
     if (name === 'INCOMPLETE') fail('PROFILE_INCOMPLETE');
     if (name === 'SingletonLock') fail('PROFILE_LOCK_PRESENT');
     if (name === 'appearance.json') fail('EXTERNAL_APPEARANCE_UNSUPPORTED');
+    // D-072 automatic same-disk snapshots: history of the same stores, not live state.
+    if (name === 'snapshots') { excluded.push(name); continue; }
     if (!cacheNames.has(name)) fail('UNKNOWN_PROFILE_FILE');
     excluded.push(name);
   }
