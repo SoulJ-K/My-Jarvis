@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 const files = [
   'brain', 'egg-life', 'lifecycle', 'baby-social', 'timer', 'reminders', 'storage',
   'timer-v02', 'followup', 'notification-queue', 'v02-integration',
-  'dock-snack', 'baby-v02', 'hatch-v02', 'trash-snack', 'trash-snack-selection',
+  'dock-snack', 'baby-v02', 'hatch-v02', 'trash-snack', 'trash-snack-selection', 'snapshots',
 ].map(name => `dist/tests/${name}.test.js`);
 
 if (process.versions.electron || Number(process.versions.node.split('.')[0]) !== 24) {

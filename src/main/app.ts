@@ -21,6 +21,7 @@ import { loadOrCreateEgg, PetStorageError } from '../storage/pet-repository';
 import { LifecycleRepository } from '../storage/lifecycle-repository';
 import { createHatchWindow } from './hatch-window';
 import { DEFAULT_HATCH_READINESS_POLICY, type HatchReadinessPolicy } from '../pet/lifecycle';
+import { createSnapshot, pruneSnapshots, snapshotDue, SnapshotError, upgradePending, type SnapshotReason } from '../storage/snapshots';
 
 // Test entry points call this same startup with isolated userData and hidden windows.
 // No test settings or storage paths are exposed to the renderer.
@@ -84,6 +85,20 @@ export function startJarvis(options: {
   });
   app.whenReady().then(async () => {
     app.dock?.hide();
+    const userData = app.getPath('userData');
+    // D-072: snapshot failures are recorded only; pet life and reminders continue.
+    const snapshot = (reason: SnapshotReason) => {
+      try {
+        createSnapshot(userData, reason, Date.now(), app.getVersion());
+        recordPetDiagnostic(`snapshot_created_${reason}`);
+      } catch (error) {
+        recordPetDiagnostic(`snapshot_failed_${reason}_${error instanceof SnapshotError ? error.code : 'UNKNOWN'}`);
+        return;
+      }
+      try { pruneSnapshots(userData); } catch { recordPetDiagnostic('snapshot_prune_failed'); }
+    };
+    // Repositories migrate older formats while opening; keep the pre-migration state first.
+    if (upgradePending(userData)) snapshot('pre-upgrade');
     // Persistence must succeed before an egg window can exist.
     const pet = loadOrCreateEgg(app.getPath('userData'));
     // Product readiness uses committed elapsed/care evidence, never the test seed.
@@ -160,10 +175,18 @@ export function startJarvis(options: {
     checkpoint();
     const timer = setInterval(checkpoint, 60_000);
     powerMonitor.on('resume', checkpoint);
+    // One daily snapshot when due; after sleep only the latest state is copied once.
+    const dailySnapshot = () => { if (!quitting && snapshotDue(userData, Date.now())) snapshot('daily'); };
+    dailySnapshot();
+    const snapshotTimer = setInterval(dailySnapshot, 10 * 60_000);
+    powerMonitor.on('resume', dailySnapshot);
     app.once('will-quit', () => {
       clearInterval(timer); powerMonitor.removeListener('resume', checkpoint);
+      clearInterval(snapshotTimer); powerMonitor.removeListener('resume', dailySnapshot);
       syncHatch = async () => {}; refreshTray = () => {};
       checkpoint(); life.close(); lifecycle.close(); baby.close();
+      // Assistant stores were closed in before-quit; copy the final committed state.
+      snapshot('quit');
     });
     win = await createPetWindow(pet, show && (!hatching || state.completed === null), kind => {
       // Waiting for an explicit start is still egg life; readiness is not a care lock.
