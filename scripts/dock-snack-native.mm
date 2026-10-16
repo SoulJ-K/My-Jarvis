@@ -135,7 +135,7 @@ struct Environment {
 - (void)send:(NSString *)event fields:(NSDictionary *)fields;
 - (void)finishChannel;
 - (void)restoreAlpha;
-- (BOOL)positionOverlay:(NSDraggingSession *)session;
+- (BOOL)positionOverlayAt:(NSPoint)cursor;
 - (void)cancelAuthority;
 - (void)detach;
 - (void)fail:(NSString *)reason;
@@ -200,10 +200,10 @@ struct Environment {
   @try { if (self.window) self.window.alphaValue=self.originalAlpha; }
   @catch (__unused NSException *error) { /* Closing window; never touch another window. */ }
 }
-- (BOOL)positionOverlay:(NSDraggingSession *)session {
+- (BOOL)positionOverlayAt:(NSPoint)cursor {
   if (!self.overlay || !self.active || self.disposed || !gate || !gate->permitted.load() || !channel) return NO;
   NSRect frame;
-  if (!OverlayFrame(session.draggingLocation,self.logicalSize,self.hotspot,&frame)) return NO;
+  if (!OverlayFrame(cursor,self.logicalSize,self.hotspot,&frame)) return NO;
   // Only move: the panel and image view retain the requested logical size.
   [self.overlay setFrameOrigin:frame.origin];
   return YES;
@@ -273,6 +273,9 @@ struct Environment {
   self.overlay.opaque=NO;
   self.overlay.backgroundColor=NSColor.clearColor;
   self.overlay.hasShadow=NO;
+  // No open/close animation: AppKit otherwise pops the panel in and fades it out
+  // over ~0.2s after the drop, leaving a shrinking copy beside the real pet.
+  self.overlay.animationBehavior=NSWindowAnimationBehaviorNone;
   self.overlay.ignoresMouseEvents=YES;
   self.overlay.hidesOnDeactivate=NO;
   self.overlay.level=NSStatusWindowLevel;
@@ -321,7 +324,9 @@ struct Environment {
   self.trackingBegan=YES;
   @try {
     session.animatesToStartingPositionsOnCancelOrFail=NO;
-    if (![self positionOverlay:session]) { [self fail:@"native-exception"]; return; }
+    // At session start draggingLocation can still be unset, which placed the panel
+    // at the top-left screen corner for one frame; use the real pointer instead.
+    if (![self positionOverlayAt:NSEvent.mouseLocation]) { [self fail:@"native-exception"]; return; }
     self.alphaChanged=YES;
     self.window.alphaValue=0; // Never hide/orderOut the source or change its mouse capture.
     [self.overlay orderFrontRegardless]; // Nonactivating, never key or main.
@@ -332,7 +337,7 @@ struct Environment {
   self.moves=MIN(100000,self.moves+1);
   if (!self.trackingBegan || !self.overlay) return;
   @try {
-    if (![self positionOverlay:session]) [self fail:@"native-exception"];
+    if (![self positionOverlayAt:session.draggingLocation]) [self fail:@"native-exception"];
   } @catch (__unused NSException *error) { [self fail:@"native-exception"]; }
 }
 - (void)draggingSession:(NSDraggingSession *)session endedAtPoint:(NSPoint)point operation:(NSDragOperation)operation {
