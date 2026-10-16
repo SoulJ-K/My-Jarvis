@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, rmSync, mkdtempSync, writeFileSync, realpathSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, rmSync, mkdtempSync, statSync, writeFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { packageMac, macBundleId, registerMacApp, registeredMacApps } from './package-mac.mjs';
+import { packageMac, macBundleId, registerMacApp, registeredMacApps, installMacApp, runningMacApp } from './package-mac.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const identityFixture = '/identity-check/profile';
@@ -140,4 +140,66 @@ startJarvis({show:false, onFailure: () => app.exit(1), onReady: async win => {
     rmSync(existing.directory, { recursive: true, force: true });
   }
   rmSync(directory, { recursive: true, force: true });
+}
+
+// Fixed install: temporary install folder and fresh fixture pets only. The
+// install folder lives under out/ because LaunchServices ignores /var/folders.
+const installRoot = mkdtempSync(path.join(root, 'out', 'install-check-'));
+const petRoot = mkdtempSync(path.join(tmpdir(), 'jarvis-install-pets-'));
+const petA = path.join(petRoot, 'pet-a'); const petB = path.join(petRoot, 'pet-b');
+const installDirectory = path.join(installRoot, 'Applications');
+let installedBundleId; let decoy;
+try {
+  loadOrCreateEgg(petA); loadOrCreateEgg(petB);
+  const petBytes = readFileSync(path.join(petA, 'pet/pet.sqlite3'));
+  assert.throws(() => installMacApp(packageMac({ validation: true }), { installDirectory }), /INSTALL_REQUIRES_EXISTING_DATA/);
+  assert.throws(() => installMacApp(packageMac({ existingDataDirectory: petA }), { installDirectory: 'relative' }), /ABSOLUTE_PATH/);
+  const first = packageMac({ existingDataDirectory: petA });
+  installedBundleId = first.bundleId;
+  const one = installMacApp(first, { installDirectory });
+  const target = path.join(realpathSync(installDirectory), 'Jarvis Pet.app');
+  assert.equal(one.installed, target); assert.equal(one.archived, null);
+  assert(!existsSync(first.directory), 'build folder is removed after a first install');
+  assert.deepEqual(registeredMacApps(first.bundleId), { paths: [target], preferred: target });
+  const folderId = statSync(target).ino; const firstContents = statSync(path.join(target, 'Contents')).ino;
+
+  const second = packageMac({ existingDataDirectory: petA });
+  const two = installMacApp(second, { installDirectory });
+  assert.equal(statSync(target).ino, folderId, 'the .app folder itself is kept for shortcuts and login items');
+  assert.notEqual(statSync(path.join(target, 'Contents')).ino, firstContents, 'Contents was replaced');
+  assert.equal(statSync(path.join(two.archived, 'Contents')).ino, firstContents, 'previous Contents is archived');
+  assert(!two.archived.endsWith('.app') && readdirSync(two.archived).every(name => !name.endsWith('.app')), 'archive is not an app');
+  assert.equal(path.dirname(two.archived), path.join(realpathSync(installDirectory), 'Jarvis Pet 이전 버전'));
+  assert(!existsSync(second.directory));
+  assert.deepEqual(registeredMacApps(first.bundleId), { paths: [target], preferred: target }, 'one route for this identity');
+  execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', target], { stdio: 'pipe' });
+
+  // A different pet must never replace this install.
+  const other = packageMac({ existingDataDirectory: petB });
+  assert.throws(() => installMacApp(other, { installDirectory }), /INSTALLED_APP_IDENTITY_MISMATCH/);
+  assert(!existsSync(other.directory), 'refused build is removed');
+  assert.equal(execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(target, 'Contents/Info.plist')], { encoding: 'utf8' }).trim(), first.bundleId);
+
+  // A process running from the installed path blocks replacement.
+  const contentsBefore = statSync(path.join(target, 'Contents')).ino;
+  decoy = spawn('/bin/bash', ['-c', `exec -a "${path.join(target, 'Contents/MacOS/Jarvis Pet')}" /bin/sleep 60`], { stdio: 'ignore' });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(runningMacApp(first.bundleId, target), true);
+  const third = packageMac({ existingDataDirectory: petA });
+  assert.throws(() => installMacApp(third, { installDirectory }), /APP_RUNNING/);
+  assert.equal(statSync(path.join(target, 'Contents')).ino, contentsBefore, 'running app is not overwritten');
+  assert(!existsSync(third.directory));
+  assert.equal(readdirSync(path.join(realpathSync(installDirectory), 'Jarvis Pet 이전 버전')).length, 1, 'no archive on refusal');
+  decoy.kill(); decoy = undefined;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(runningMacApp(first.bundleId, target), false);
+  assert.deepEqual(readFileSync(path.join(petA, 'pet/pet.sqlite3')), petBytes, 'install never touches pet data');
+  console.log('PASS: fixed install keeps one .app folder, archives previous Contents as a non-app, single route, refuses other pets and running apps');
+} finally {
+  decoy?.kill();
+  if (installedBundleId) for (const p of registeredMacApps(installedBundleId).paths) {
+    if (p.startsWith(realpathSync(installRoot))) execFileSync(lsregister, ['-u', p], { stdio: 'pipe' });
+  }
+  rmSync(installRoot, { recursive: true, force: true });
+  rmSync(petRoot, { recursive: true, force: true });
 }
