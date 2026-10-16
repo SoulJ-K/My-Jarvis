@@ -62,6 +62,20 @@ export const defaultMacInstallDirectory = () => path.join(homedir(), 'Applicatio
 const installedName = 'Jarvis Pet.app';
 const archiveName = 'Jarvis Pet 이전 버전';
 
+/** Retention is manual for now; this summary tells when to consider pruning. */
+export const archiveReviewThreshold = { count: 5, bytes: 1.5 * 1024 ** 3 };
+export function macInstallArchiveSummary(installDirectory = defaultMacInstallDirectory()) {
+  const archiveRoot = path.join(existsSync(installDirectory) ? realpathSync(installDirectory) : installDirectory, archiveName);
+  if (!existsSync(archiveRoot)) return { archiveRoot, count: 0, bytes: 0 };
+  const count = readdirSync(archiveRoot, { withFileTypes: true }).filter(entry => entry.isDirectory()).length;
+  const kilobytes = Number(execFileSync('/usr/bin/du', ['-sk', archiveRoot], { encoding: 'utf8' }).split('\t')[0]);
+  return { archiveRoot, count, bytes: kilobytes * 1024 };
+}
+export function formatArchiveSummary({ count, bytes }) {
+  const review = count >= archiveReviewThreshold.count || bytes >= archiveReviewThreshold.bytes;
+  return `ARCHIVES: 보관본 ${count}개, 합계 ${(bytes / 1024 ** 3).toFixed(1)}GB (5개 또는 1.5GB 이상이면 정리 검토)${review ? ' — 정리 검토 시점입니다' : ''}`;
+}
+
 /**
  * Install an existing-pet build at one fixed path, then activate it there.
  * The .app folder itself stays; only its Contents is swapped, so shortcuts and
@@ -259,6 +273,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.log(`INSTALLED_APP:${installed.installed}`);
     console.log(installed.archived ? `PREVIOUS_CONTENTS_ARCHIVED:${installed.archived}` : 'PREVIOUS_CONTENTS_ARCHIVED:none (first install)');
     console.log(`ACTIVATED:${installed.bundleId}; other registrations of this identity were removed (files kept)`);
+    console.log(formatArchiveSummary(macInstallArchiveSummary(installDirectory)));
     console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
     console.log('DATA:explicit existing pet directory; no pet data copied; app has NOT been launched');
     process.exit(0);

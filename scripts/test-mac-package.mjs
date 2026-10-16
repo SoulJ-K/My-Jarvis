@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { packageMac, macBundleId, registerMacApp, registeredMacApps, installMacApp, runningMacApp } from './package-mac.mjs';
+import { packageMac, macBundleId, registerMacApp, registeredMacApps, installMacApp, runningMacApp, macInstallArchiveSummary, formatArchiveSummary } from './package-mac.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const identityFixture = '/identity-check/profile';
@@ -161,6 +161,7 @@ try {
   assert.equal(one.installed, target); assert.equal(one.archived, null);
   assert(!existsSync(first.directory), 'build folder is removed after a first install');
   assert.deepEqual(registeredMacApps(first.bundleId), { paths: [target], preferred: target });
+  assert.equal(macInstallArchiveSummary(installDirectory).count, 0);
   const folderId = statSync(target).ino; const firstContents = statSync(path.join(target, 'Contents')).ino;
 
   const second = packageMac({ existingDataDirectory: petA });
@@ -172,6 +173,11 @@ try {
   assert.equal(path.dirname(two.archived), path.join(realpathSync(installDirectory), 'Jarvis Pet 이전 버전'));
   assert(!existsSync(second.directory));
   assert.deepEqual(registeredMacApps(first.bundleId), { paths: [target], preferred: target }, 'one route for this identity');
+  const summary = macInstallArchiveSummary(installDirectory);
+  assert.equal(summary.count, 1); assert(summary.bytes > 100 * 1024 ** 2, 'archive size is measured');
+  assert.match(formatArchiveSummary(summary), /^ARCHIVES: 보관본 1개, 합계 0\.\dGB \(5개 또는 1\.5GB 이상이면 정리 검토\)$/);
+  assert.match(formatArchiveSummary({ count: 5, bytes: 0 }), /정리 검토 시점입니다$/);
+  assert.match(formatArchiveSummary({ count: 1, bytes: 1.5 * 1024 ** 3 }), /정리 검토 시점입니다$/);
   execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', target], { stdio: 'pipe' });
 
   // A different pet must never replace this install.

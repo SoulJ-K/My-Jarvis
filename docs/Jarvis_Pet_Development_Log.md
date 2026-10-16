@@ -41,6 +41,8 @@
 
 **결과:** 기술 설계 6.3절의 추후 제안을 사용자가 고른 A안(`~/Applications`)으로 구현했다. `scripts/package-mac.mjs`에 `installMacApp`·`runningMacApp`과 `--install`·`--install-dir` 옵션을 추가했고, 동작 규칙은 [기술 설계의 실행 안내](Jarvis_Pet_Technical_Design.md#existing-pet-mac)에 있다. 보관본 개수는 사용자 답이 없어 추천안인 '모두 보관'으로 했다. 보관 위치는 제안 때의 `out/app-archive`에서 설치 위치 옆 `Jarvis Pet 이전 버전`으로 바꿨다. `out/`을 정리할 때 함께 지워지지 않게 하고, 검사용 설치 위치를 쓰면 보관본도 그 안에 생기게 하려는 것이다.
 
+**보관 현황 출력(같은 날 후속):** 사용자는 모두 보관을 유지하고, 줄일 시점은 설치 결과로 판단하기로 했다. 그래서 설치 끝에 보관본 개수·합계 용량과 검토 기준(5개 또는 1.5GB)을 한 줄로 출력하도록 했다. 기준은 판단을 돕는 안내이고 자동 삭제 조건이 아니다.
+
 **작업 조건:** 워크트리 `fixed-install-location-003a23`, 브랜치 `claude/fixed-install-location-003a23`, 기준 `66dd5fd`. 실제 펫 앱·자료·등록은 건드리지 않았다.
 
 **검사(격리 자료·임시 설치 위치):**
@@ -50,6 +52,7 @@
 | `npm run test:mac-package` 새 항목 | 통과. 새 합성 펫 2개, 워크트리 `out/install-check-*` 임시 설치 위치. 첫 설치·등록, 두 번째 설치의 `.app` 폴더 유지·`Contents` 교체·보관본이 앱이 아님·등록 경로 1개, 다른 펫 앱 거부, 설치 경로에서 실행 중인 프로세스가 있을 때 거부와 원래 앱 유지, 펫 자료 바이트 불변을 확인 |
 | `npm run test:mac-package` 기존 항목 | 통과. `No handler registered` 로그는 변경 전 코드에서도 나와 이번 변경과 무관하다 |
 | `npm run test:ci` | 192개 통과 |
+| 보관 현황 출력 | 통과. 첫 설치 0개, 두 번째 설치 1개와 실제 용량 측정, 기준(5개, 1.5GB) 도달 시 검토 문구. 합성 펫과 워크트리 `out/` 임시 설치 위치로 명령 전체를 두 번 실행해 `ARCHIVES: 보관본 1개, 합계 0.3GB …` 출력을 확인하고 등록·폴더를 정리했다 |
 | 명령 옵션 | `--install`만, 상대경로 `--install-dir`, `--install` 없는 `--install-dir`, 알 수 없는 옵션을 거부 |
 
 **발견한 점:** LaunchServices는 시스템 임시 폴더(`/var/folders`)의 앱을 등록하지 않는다. 그래서 첫 검사가 `APP_ROUTE_VERIFICATION_FAILED`로 실패했고 설치를 되돌렸다. 검사용 설치 위치를 워크트리 `out/` 아래로 옮겨 통과했다. 실제 `~/Applications`에는 해당하지 않는다.
