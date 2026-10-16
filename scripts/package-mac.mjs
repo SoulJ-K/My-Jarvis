@@ -2,6 +2,7 @@ import { cpSync, existsSync, lstatSync, realpathSync, mkdirSync, mkdtempSync, re
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import electron from 'electron';
 
@@ -42,6 +43,103 @@ export function registerMacApp(bundle) {
   } catch (error) {
     execFileSync(lsregister, ['-u', bundle], { stdio: 'pipe' });
     for (const old of previous) if (existsSync(old)) execFileSync(lsregister, ['-f', old], { stdio: 'pipe' });
+    throw error;
+  }
+}
+
+/** True when this identity runs anywhere, or any process runs from the bundle path. */
+export function runningMacApp(bundleId, bundle) {
+  const script = `ObjC.import('AppKit'); function run(args) {
+    return String($.NSRunningApplication.runningApplicationsWithBundleIdentifier(args[0]).count);
+  }`;
+  if (Number(execFileSync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script, bundleId], { encoding: 'utf8' })) > 0) return true;
+  const prefixes = [bundle, existsSync(bundle) ? realpathSync(bundle) : bundle].map(p => path.join(p, 'Contents') + '/');
+  return execFileSync('/bin/ps', ['-axww', '-o', 'command='], { encoding: 'utf8' })
+    .split('\n').some(line => prefixes.some(prefix => line.includes(prefix)));
+}
+
+export const defaultMacInstallDirectory = () => path.join(homedir(), 'Applications');
+const installedName = 'Jarvis Pet.app';
+const archiveName = 'Jarvis Pet 이전 버전';
+
+/** Retention is manual for now; this summary tells when to consider pruning. */
+export const archiveReviewThreshold = { count: 5, bytes: 1.5 * 1024 ** 3 };
+export function macInstallArchiveSummary(installDirectory = defaultMacInstallDirectory()) {
+  const archiveRoot = path.join(existsSync(installDirectory) ? realpathSync(installDirectory) : installDirectory, archiveName);
+  if (!existsSync(archiveRoot)) return { archiveRoot, count: 0, bytes: 0 };
+  const count = readdirSync(archiveRoot, { withFileTypes: true }).filter(entry => entry.isDirectory()).length;
+  const kilobytes = Number(execFileSync('/usr/bin/du', ['-sk', archiveRoot], { encoding: 'utf8' }).split('\t')[0]);
+  return { archiveRoot, count, bytes: kilobytes * 1024 };
+}
+export function formatArchiveSummary({ count, bytes }) {
+  const review = count >= archiveReviewThreshold.count || bytes >= archiveReviewThreshold.bytes;
+  return `ARCHIVES: 보관본 ${count}개, 합계 ${(bytes / 1024 ** 3).toFixed(1)}GB (5개 또는 1.5GB 이상이면 정리 검토)${review ? ' — 정리 검토 시점입니다' : ''}`;
+}
+
+/**
+ * Install an existing-pet build at one fixed path, then activate it there.
+ * The .app folder itself stays; only its Contents is swapped, so shortcuts and
+ * login items that resolve by path or by file identity keep the same target.
+ * The previous Contents is kept outside any .app folder, so macOS never sees a
+ * second app with the same identity. Nothing is deleted automatically.
+ */
+export function installMacApp(built, { installDirectory = defaultMacInstallDirectory() } = {}) {
+  const cleanup = () => rmSync(built.directory, { recursive: true, force: true });
+  let target; let archived; let swapped = false;
+  try {
+    if (!/^local\.jarvispet\.companion\.[a-f0-9]{24}$/.test(built.bundleId)) throw new Error('INSTALL_REQUIRES_EXISTING_DATA');
+    if (typeof installDirectory !== 'string' || !path.isAbsolute(installDirectory)) throw new Error('INSTALL_DIR_REQUIRES_ABSOLUTE_PATH');
+    mkdirSync(installDirectory, { recursive: true });
+    target = path.join(realpathSync(installDirectory), installedName);
+    const readId = bundle => execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(bundle, 'Contents/Info.plist')], { encoding: 'utf8' }).trim();
+    if (existsSync(target)) {
+      const stat = lstatSync(target);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('INSTALL_TARGET_NOT_APP_FOLDER');
+      let installedId;
+      try { installedId = readId(target); } catch { throw new Error('INSTALL_TARGET_UNREADABLE'); }
+      // One install path belongs to one pet. Never replace another pet's app.
+      if (installedId !== built.bundleId) throw new Error('INSTALLED_APP_IDENTITY_MISMATCH');
+    }
+    if (runningMacApp(built.bundleId, target)) throw new Error('APP_RUNNING');
+    if (existsSync(target)) {
+      const archiveRoot = path.join(path.dirname(target), archiveName);
+      mkdirSync(archiveRoot, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '');
+      archived = mkdtempSync(path.join(archiveRoot, `${stamp}-`));
+      renameSync(path.join(target, 'Contents'), path.join(archived, 'Contents'));
+      try {
+        renameSync(path.join(built.bundle, 'Contents'), path.join(target, 'Contents'));
+      } catch (error) {
+        renameSync(path.join(archived, 'Contents'), path.join(target, 'Contents'));
+        rmSync(archived, { recursive: true, force: true });
+        archived = undefined;
+        throw error;
+      }
+      writeFileSync(path.join(archived, 'archived.json'), JSON.stringify({
+        bundleId: built.bundleId, archivedAt: new Date().toISOString(), restoreTo: target,
+        note: 'Previous Contents only; not an app. Do not rename to .app while the installed app keeps this identity.',
+      }, null, 2) + '\n');
+    } else {
+      renameSync(built.bundle, target);
+    }
+    swapped = true;
+    cleanup();
+    execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', target], { stdio: 'pipe' });
+    const activation = registerMacApp(target);
+    return { ...activation, installed: target, archived: archived ?? null };
+  } catch (error) {
+    if (swapped) {
+      // Put the previous Contents back (or remove a first install) before failing.
+      try {
+        if (archived) {
+          renameSync(path.join(target, 'Contents'), path.join(archived, 'failed-Contents'));
+          renameSync(path.join(archived, 'Contents'), path.join(target, 'Contents'));
+          execFileSync(lsregister, ['-f', target], { stdio: 'pipe' });
+        } else {
+          rmSync(target, { recursive: true, force: true });
+        }
+      } catch { /* report the original error; the archive keeps the old Contents */ }
+    } else cleanup();
     throw error;
   }
 }
@@ -149,14 +247,41 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.log(JSON.stringify(registerMacApp(args[1])));
     process.exit(0);
   }
-  if (args.length !== 0 && (args.length !== 2 || args[0] !== '--existing-data')) {
-    throw new Error('USAGE: package-mac.mjs [--existing-data /absolute/path/to/data] | --activate /absolute/path/to/app');
+  const usage = 'USAGE: package-mac.mjs [--existing-data /absolute/path/to/data [--install [--install-dir /absolute/dir]]] | --activate /absolute/path/to/app';
+  let existingDataDirectory; let install = false; let installDirectory;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--existing-data' && existingDataDirectory === undefined && i + 1 < args.length) existingDataDirectory = args[++i];
+    else if (args[i] === '--install' && !install) install = true;
+    else if (args[i] === '--install-dir' && installDirectory === undefined && i + 1 < args.length) installDirectory = args[++i];
+    else throw new Error(usage);
   }
-  const result = packageMac({ existingDataDirectory: args[1] });
+  if ((install || installDirectory !== undefined) && existingDataDirectory === undefined) throw new Error('INSTALL_REQUIRES_EXISTING_DATA');
+  if (installDirectory !== undefined && !install) throw new Error(usage);
+  if (install) {
+    if (installDirectory !== undefined && !path.isAbsolute(installDirectory)) throw new Error('INSTALL_DIR_REQUIRES_ABSOLUTE_PATH');
+    installDirectory ??= defaultMacInstallDirectory();
+    // Stop before building when the pet is running; installMacApp checks again.
+    const planned = path.join(existsSync(installDirectory) ? realpathSync(installDirectory) : installDirectory, installedName);
+    if (path.isAbsolute(existingDataDirectory) && existsSync(existingDataDirectory)
+      && runningMacApp(macBundleId({ existingDirectory: realpathSync(existingDataDirectory) }), planned)) {
+      throw new Error('APP_RUNNING: 같은 펫 앱이 실행 중입니다. 메뉴의 「Jarvis Pet 종료」로 정상 종료한 뒤 다시 실행해 주세요.');
+    }
+  }
+  const result = packageMac({ existingDataDirectory });
+  if (install) {
+    const installed = installMacApp(result, { installDirectory });
+    console.log(`INSTALLED_APP:${installed.installed}`);
+    console.log(installed.archived ? `PREVIOUS_CONTENTS_ARCHIVED:${installed.archived}` : 'PREVIOUS_CONTENTS_ARCHIVED:none (first install)');
+    console.log(`ACTIVATED:${installed.bundleId}; other registrations of this identity were removed (files kept)`);
+    console.log(formatArchiveSummary(macInstallArchiveSummary(installDirectory)));
+    console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
+    console.log('DATA:explicit existing pet directory; no pet data copied; app has NOT been launched');
+    process.exit(0);
+  }
   console.log(`LOCAL_PREVIEW_APP:${result.bundle}`);
   console.log('ACTIVATION: run package-mac.mjs --activate with this app path before launch; packaging alone does not change app registration');
   console.log('SIGNATURE:ad-hoc verified; NOT Developer ID signed or notarized');
-  console.log(args.length
+  console.log(existingDataDirectory !== undefined
     ? 'DATA:explicit existing pet directory; no pet data copied; app has NOT been launched'
     : 'DATA:separate Jarvis Pet Preview directory; existing pet data is not used');
 }
