@@ -60,6 +60,9 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
       await pet('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
       writeFileSync(path.join(tmpdir(), `jarvis-social-${name}.png`), (await win.webContents.capturePage()).toPNG());
     };
+    await pet(`window.__orbRolls = []; new MutationObserver(() => window.__orbRolls.push(document.querySelector('#emotion-orb').dataset.roll ?? ''))
+      .observe(document.querySelector('#emotion-orb'), { attributeFilter: ['data-roll'] })`);
+    assert.equal(await pet('document.querySelector("#emotion-orb").getAnimations().length'), 0, 'a resting orb has no endless idle animation');
     // Drive the existing form, including IME guard, without focusing or showing any window.
     await run(`document.querySelector('#request').value='잘했어'; document.querySelector('#request').dispatchEvent(new CompositionEvent('compositionstart')); document.querySelector('#timer-form').requestSubmit()`);
     await pause(); assert.equal(count(), 0);
@@ -70,6 +73,10 @@ startup.startJarvis = () => start({ show: false, onReady: async win => {
     assert.equal(count(), 1);
     assert.equal(await pet('document.querySelector("#emotion-orb").dataset.orbId'), `${stage.petId}:orb`);
     await capture('joy');
+    // An expression change rolls the orb once; the finished roll is cleared and nothing keeps animating.
+    assert.equal(await pet('document.querySelector("#emotion-orb").dataset.expression'), 'joy');
+    assert.equal(await pet('window.__orbRolls.some(roll => roll === "a" || roll === "b")'), true, 'expression change starts one roll');
+    await until(() => pet('document.querySelector("#emotion-orb").getAnimations().length === 0 && !("roll" in document.querySelector("#emotion-orb").dataset)'));
     win.webContents.debugger.attach('1.3');
     await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     assert.equal(await pet('getComputedStyle(document.querySelector(".shell")).animationName'), 'none');

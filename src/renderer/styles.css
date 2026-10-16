@@ -145,6 +145,9 @@ html[data-stage=baby] .shadow { left: 41px; top: 245px; transform: translate(var
 #egg.baby-idle[data-dragging=true], #egg.baby-idle.pressed { transition: none; }
 #egg.baby-idle[data-attention-act=cursor][data-direction=right] .shell::before { translate: 3px 0; }
 
-#emotion-orb:not([data-play=true]) { animation: orb-idle-roll 3s ease-in-out infinite alternate; }
-@keyframes orb-idle-roll { to { transform: translateX(-6px) rotate(-28deg); } }
-@media (prefers-reduced-motion: reduce) { #emotion-orb:not([data-play=true]) { animation: none; } }
+/* The orb rests still and rolls once (1s) when its expression changes; an endless idle roll kept the window repainting. */
+#emotion-orb[data-roll=a]:not([data-play=true]) { animation: orb-shift-a 1s ease-in-out; }
+#emotion-orb[data-roll=b]:not([data-play=true]) { animation: orb-shift-b 1s ease-in-out; }
+@keyframes orb-shift-a { 50% { transform: translateX(-6px) rotate(-28deg); } }
+@keyframes orb-shift-b { 50% { transform: translateX(-6px) rotate(-28deg); } }
+@media (prefers-reduced-motion: reduce) { #emotion-orb[data-roll]:not([data-play=true]) { animation: none; } }

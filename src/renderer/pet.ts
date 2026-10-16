@@ -109,6 +109,10 @@ window.addEventListener('unload', unsubscribeReady, { once: true });
 
 const food = document.querySelector<HTMLButtonElement>('#food')!;
 const sleepSymbol = document.querySelector<HTMLElement>('#sleep-symbol')!;
+// Clear the finished roll so leaving orb play does not replay it.
+document.querySelector<HTMLElement>('#emotion-orb')!.addEventListener('animationend', event => {
+  if (event.animationName.startsWith('orb-shift')) delete (event.currentTarget as HTMLElement).dataset.roll;
+});
 let babyRevision = -1;
 let babyState: import('../pet/baby-life').BabyPresentation | null = null;
 let foodPointer: number | undefined;
@@ -218,7 +222,10 @@ function renderBaby(state: import('../pet/baby-life').BabyPresentation | null) {
   const orb = document.querySelector<HTMLElement>('#emotion-orb')!;
   orb.hidden = false;
   orb.dataset.orbId = state.social.orb?.id ?? '';
-  orb.dataset.expression = state.social.orb?.expression ?? 'quiet';
+  const expression = state.social.orb?.expression ?? 'quiet';
+  // Alternate two identical keyframes so back-to-back changes restart the roll.
+  if (orb.dataset.expression && orb.dataset.expression !== expression) orb.dataset.roll = orb.dataset.roll === 'a' ? 'b' : 'a';
+  orb.dataset.expression = expression;
   orb.dataset.refusing = String(!state.social.accepting);
   orb.dataset.play = String(!waking && state.social.motion === 'play-orb');
   const position = displayedBabyPosition;
