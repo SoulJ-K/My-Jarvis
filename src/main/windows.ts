@@ -17,6 +17,8 @@ const DIAGNOSTIC_LIMIT = 16 * 1024;
 const babyFrames = new WeakMap<BrowserWindow, () => import('../pet/baby-life').BabyPresentation | null>();
 const babyAnchors = new WeakMap<BrowserWindow, () => Electron.Rectangle>();
 /** Main-owned card modules can position against the painted body without duplicating its layout. */
+/** Emitted on the pet window once a user drag has moved the baby to a new place. */
+export const BABY_DRAG_ENDED = 'jarvis-baby-drag-ended';
 export function babyScreenBounds(win: BrowserWindow): Electron.Rectangle | null { return babyAnchors.get(win)?.() ?? null; }
 /** Use after social commands or attention updates: a repository view alone lacks window placement. */
 export function refreshBabyPresentation(win: BrowserWindow) { return babyFrames.get(win)?.() ?? null; }
@@ -116,7 +118,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
   const beginNativeDrag = async () => {
     if (!dock || nativePending || nativeAttempted || !drag) return;
     nativeAttempted = true; nativePending = true;
-    recordPetDiagnostic('dock_drag_requested');
+    recordPetDiagnostic('baby_drag_requested');
     const bounds = win.getBounds();
     const cursor = screen.getCursorScreenPoint();
     const anchor = visibleAnchor();
@@ -128,18 +130,20 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
       const result = await dock.start({imagePNGBase64:image.toPNG().toString('base64'),width:bounds.width,height:bounds.height,
         hotSpotX:cursor.x-bounds.x,hotSpotY:cursor.y-bounds.y}, () => {
         nativeStarted = true; clearArm();
-        recordPetDiagnostic('dock_drag_started');
+        recordPetDiagnostic('baby_drag_started');
         win.webContents.send('pet:native-drag-reset');
         // AppKit owns temporary opacity and restores it even before JS callbacks run.
       });
       if (win.isDestroyed()) return;
-      if ('reason' in result) recordPetDiagnostic('dock_drag_' + result.reason);
+      if ('reason' in result) recordPetDiagnostic('baby_drag_' + result.reason);
       if ('screenPoint' in result) {
         if (result.kind === 'cancelled') {
           placeVisible({x:result.screenPoint.x-bodyOffset.x,y:result.screenPoint.y-bodyOffset.y});
           const movedHome=visibleAnchor(); baby!.setHome(movedHome); home=movedHome;
+          win.emit(BABY_DRAG_ENDED);
         }
-        recordPetDiagnostic(result.kind === 'snack-requested' ? 'dock_snack_requested' : 'dock_drag_cancelled');
+        // Every baby move uses the native drag; only a drop on the Dock trash is a snack request.
+        recordPetDiagnostic(result.kind === 'snack-requested' ? 'dock_snack_requested' : 'baby_drag_moved');
       }
       // Restore before opening the normal, explicit selection/confirmation flow.
       if (nativeStarted) {
@@ -260,6 +264,7 @@ export async function createPetWindow(pet: EggSnapshot, show = true, care: (kind
     if (moved && dragAnchor && babyReady()) {
       const movedHome = visibleAnchor();
       try { baby!.setHome(movedHome); home = movedHome; } catch { win.webContents.send('baby:save-failed'); }
+      win.emit(BABY_DRAG_ENDED);
     }
     dragAnchor = undefined;
     drag = undefined;

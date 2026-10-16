@@ -96,6 +96,20 @@ test('missing dates/meridiem/content and unsupported recurring or fuzzy input as
     '오늘 08:00 알람','2026-02-30 10:00 알람','2026-13-01 10:00 알람','내일 10:00 알려줘','x'.repeat(201)])
     assert.equal(parseSchedule('a',input,now).ok,false,String(input));
 });
+
+test('delete or change requests for existing items never become a new draft', () => inZone('Asia/Seoul', () => {
+  const now = new Date(2026,8,26,9).getTime();
+  for (const input of ['오후 3시 회의 알람 삭제해','오후 3시 회의 알람 취소해줘','내일 오전 10시 리마인더 지워줘',
+    '오늘 설정된 알람들 모두 삭제해.','내일 오후 2시 회의 리마인더 4시로 바꿔줘','오후 5시 알람 일시정지해']) {
+    const result = parseSchedule('a', input, now);
+    assert.equal(result.ok, false, input);
+    assert.match(result.message, /진행 중/, input);
+  }
+  // Delete words inside the content still register when the request names the reminder last.
+  const content = parseSchedule('a', '오후 3시 예약 취소 전화 리마인더', now);
+  assert.equal(content.ok, true);
+  if (content.ok) assert.equal(content.draft.content, '예약 취소 전화');
+}));
 test('DST gaps and folds are rejected including a half-hour fold', () => {
   inZone('America/New_York', () => {
     const now = new Date(2026,0,1).getTime();

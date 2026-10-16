@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
-import { babyScreenBounds } from './windows';
+import { BABY_DRAG_ENDED, babyScreenBounds } from './windows';
 
 /** Non-activating automatic presentation; buttons activate only on deliberate input. */
 export async function createResultCardWindow(pet: BrowserWindow) {
@@ -62,9 +62,23 @@ export async function createResultCardWindow(pet: BrowserWindow) {
       place();
     }).catch(()=>{}).finally(()=>{measuring=false;});
   };
+  // After the user drags the baby elsewhere, follow once; never while the pointer
+  // is over the card (a button may be its target). Autonomous moves stay held.
+  let followTimer: NodeJS.Timeout | undefined;
+  const follow = () => {
+    clearTimeout(followTimer);
+    followTimer = setTimeout(() => {
+      if (win.isDestroyed() || pet.isDestroyed() || !win.isVisible() || !openingBody) return;
+      const cursor = screen.getCursorScreenPoint(), card = win.getBounds();
+      if (cursor.x >= card.x && cursor.x < card.x + card.width && cursor.y >= card.y && cursor.y < card.y + card.height) return;
+      openingBody = captureBody(); place();
+    }, 300);
+  };
+  (pet as NodeJS.EventEmitter).on(BABY_DRAG_ENDED, follow);
   const sizingTimer=setInterval(()=>{if(!win.isDestroyed() && !pet.isDestroyed() && win.isVisible())measure();},100);
   const cleanup = () => {
-    clearInterval(sizingTimer);
+    clearInterval(sizingTimer); clearTimeout(followTimer);
+    (pet as NodeJS.EventEmitter).removeListener(BABY_DRAG_ENDED, follow);
     openingBody = null;
   };
   // OS shutdown / forced window destruction can bypass the close/dispose path.
