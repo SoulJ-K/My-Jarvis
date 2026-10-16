@@ -29,6 +29,9 @@ export function parseSchedule(id: string, input: unknown, now: number): Schedule
     return fail('날짜·시각·알림 내용을 200자 안으로 적어 주세요.');
   const text = input.trim().replace(/[.!?]+$/, '').trim();
   if (/매일|매주|매월|반복/.test(text)) return fail('지금은 한 번만 울리는 알림을 지원합니다. 날짜를 하나 정해 주세요.');
+  // A request ending in delete/change words is about an existing item; never turn it into a new one.
+  if (/(?:삭제|취소|지워|지우|없애|수정|변경|바꿔|미뤄|일시\s*정지)\s*(?:해|해\s*줘|줘|주세요|해\s*주세요)?$/.test(text))
+    return fail('등록된 알림을 지우거나 바꾸는 건 아직 말로 할 수 없어요. 입력창 아래 「진행 중」 목록에서 취소해 주세요. 새 알림이라면 할 일을 알림 종류 앞에 적어 주세요. 예: 오후 3시 예약 취소 전화 리마인더');
   const dateMatch = /(?:^|\s)(오늘|내일|\d{4}-\d{2}-\d{2})(?:은|에)?(?=\s|$)/.exec(text);
   const requestedDate = dateMatch?.[1] ?? '오늘';
   let rest = dateMatch ? take(text, dateMatch) : text;

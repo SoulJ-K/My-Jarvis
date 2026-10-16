@@ -15,7 +15,7 @@ import { BabyLifeRepository } from '../src/storage/baby-life-repository';
 import { LifecycleRepository } from '../src/storage/lifecycle-repository';
 import { loadOrCreateEgg } from '../src/storage/pet-repository';
 import { hatchScenes } from '../src/pet/lifecycle';
-import { createPetWindow, refreshBabyPresentation, babyScreenBounds, placeBabyAfterHatch } from '../src/main/windows';
+import { BABY_DRAG_ENDED, createPetWindow, refreshBabyPresentation, babyScreenBounds, placeBabyAfterHatch } from '../src/main/windows';
 import { createPromptWindows } from '../src/main/prompt-window';
 import { createResultCardWindow } from '../src/main/result-card-window';
 import { timerNotifications } from '../src/main/notifications';
@@ -135,6 +135,19 @@ app.whenReady().then(async()=>{
     await pause(50);positions.push(babyScreenBounds(pet)!);
     assert.deepEqual(card.win.getPosition(),[fixed.x,fixed.y],'open bubble must not chase the moving baby');
   }
+  // A finished user drag moves the bubble once; a pointer over the bubble keeps it in place.
+  const realCursor=screen.getCursorScreenPoint;
+  pet.setPosition(pet.getBounds().x+(pet.getBounds().x-motionArea.x>200?-200:200),pet.getBounds().y);
+  screen.getCursorScreenPoint=()=>({x:fixed.x+10,y:fixed.y+10});
+  pet.emit(BABY_DRAG_ENDED);await pause(450);
+  assert.deepEqual(card.win.getPosition(),[fixed.x,fixed.y],'pointer over the bubble holds it after a drag');
+  screen.getCursorScreenPoint=()=>({x:-10000,y:-10000});
+  pet.emit(BABY_DRAG_ENDED);await pause(450);
+  const followed=card.win.getPosition();
+  assert.notDeepEqual(followed,[fixed.x,fixed.y],'bubble follows the baby once after a drag');
+  await pause(500);
+  assert.deepEqual(card.win.getPosition(),followed,'after following once the bubble holds again while the baby keeps moving');
+  screen.getCursorScreenPoint=realCursor;
   writeFileSync(path.resolve('.local/v02-integration/hop-motion-samples-03.json'),JSON.stringify(positions));
   const xs=positions.map(p=>p.x);
   assert.ok(Math.max(...xs)-Math.min(...xs)>300,'bottom urging must travel broadly');
